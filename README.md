@@ -36,7 +36,7 @@ Requires **tmux ≥ 3.4**. Optional: `fzf` (for the `Alt-Space` command palette)
 | Command | What it does |
 |---|---|
 | `t` / `t <name>` | attach/create the `main` session (or `<name>`) |
-| `tcwd` | session rooted in the current directory, with the `dev` layout (`agent · editor · git · term`) |
+| `tp [dir]` | session with the `dev` layout (`agent · editor · git · term`), rooted in `dir` (default: cwd). `tcwd` is a kept alias |
 | `tssh <host>` | dedicated SSH session `ssh_<host>`; every pane/window enters the host |
 | `tcopy` | copy the current pane's full scrollback to the clipboard |
 | `agent` | run this host's AI agent (see below) |
@@ -45,7 +45,7 @@ The `dev` layout's **agent** window resolves its command from `$TMUX_AGENT`, els
 line of `~/.config/tmux/agent.local`, else a shell with a warning. Per host:
 `export TMUX_AGENT=codex` or `echo codex > ~/.config/tmux/agent.local`.
 
-### Keys (prefix is `Ctrl-a`)
+### Keys (prefix is `Ctrl-a`, or `Ctrl-Space` as a secondary leader)
 
 | Key | Action |
 |---|---|
@@ -57,7 +57,13 @@ line of `~/.config/tmux/agent.local`, else a shell with a warning. Per host:
 | `prefix + Tab` | last session (toggle) |
 | `prefix + 1`…`9` | jump to the N-th session in the bar |
 | `prefix + H/J/K/L` | resize pane (repeatable) |
+| `prefix + R` | respawn a dead pane (revive a closed dev-layout tool window) |
 | `prefix + r` | reload `tmux.conf` |
+
+In copy mode (`prefix + [` or scroll up): `v` select, `y` / `Enter` / `Ctrl-C` / mouse-drag-release copy
+**without** leaving copy mode (the selection also reaches the system clipboard); `q` / `Esc` to exit.
+The `dev` tool windows (`agent · editor · git`) stay put when their app exits — the pane goes *dead*
+instead of the window closing, so `prefix + R` relaunches it (`term` stays a disposable shell).
 
 ## The SSH shield
 

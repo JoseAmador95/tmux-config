@@ -40,15 +40,18 @@ t() {
   if [ -n "${TMUX:-}" ]; then tmux switch-client -t "=$s"; else tmux attach -t "=$s"; fi
 }
 
-# tcwd — create (or jump to) a session rooted in the CURRENT directory, with the `dev` layout.
-# Name = basename of $PWD with dots → underscores (tmux forbids '.' and ':' in session names).
-# The layout is built once (see sessions/dev.conf); afterwards we just switch/attach.
-tcwd() {
-  local SESS="${PWD##*/}"; SESS="${SESS//./_}"
-  local DIR="$PWD"
+# tp [dir] — create (or jump to) a project session with the `dev` layout, rooted in `dir`
+# (default: the CURRENT directory). Name = basename of the dir with dots → underscores (tmux
+# forbids '.' and ':' in session names). The layout is built once (see sessions/dev.conf);
+# afterwards we just switch/attach. Formerly `tcwd`, kept as an alias below.
+tp() {
+  local DIR="${1:-$PWD}"
+  DIR=$(cd "$DIR" 2>/dev/null && pwd) || { echo "tp: not a directory: ${1:-$PWD}" >&2; return 1; }
+  local SESS="${DIR##*/}"; SESS="${SESS//./_}"
   tmux has-session -t "=$SESS" 2>/dev/null || . "$HOME/.config/tmux/sessions/dev.conf"
   if [ -n "${TMUX:-}" ]; then tmux switch-client -t "=$SESS"; else tmux attach -t "=$SESS"; fi
 }
+tcwd() { tp "$@"; }   # backwards-compatible alias (name kept for muscle memory)
 
 # tssh <host> — dedicated session for an SSH host: every pane/window enters the host.
 # Name = "ssh_" + host sanitized ([^A-Za-z0-9_-] → _). The first pane enters via ssh-host.sh;
@@ -62,6 +65,28 @@ tssh() {
   if [ -n "${TMUX:-}" ]; then tmux switch-client -t "=$sess"; else tmux attach -t "=$sess"; fi
 }
 
+# ── tssh completion: Tab-complete the Host aliases from ~/.ssh/config ───────────────────
+# Offers the `Host` aliases as candidates (you can still type any raw user@host). Skips wildcard/
+# negated patterns. Reads only the main config — does not follow `Include`.
+_t_ssh_hosts() {
+  local cfg="$HOME/.ssh/config"
+  [ -r "$cfg" ] || return 0
+  awk 'tolower($1)=="host"{for(i=2;i<=NF;i++)if($i!~/[*?!]/)print $i}' "$cfg"
+}
+if [ -n "${ZSH_VERSION:-}" ]; then
+  if whence compdef >/dev/null 2>&1; then
+    _tssh() { local -a h; h=(${(f)"$(_t_ssh_hosts)"}); compadd -a h; }
+    compdef _tssh tssh
+  else
+    _t_ssh_cc() { reply=(${(f)"$(_t_ssh_hosts)"}); }
+    compctl -K _t_ssh_cc tssh
+  fi
+elif [ -n "${BASH_VERSION:-}" ]; then
+  _t_ssh_bash() { local cur=${COMP_WORDS[COMP_CWORD]}; COMPREPLY=($(compgen -W "$(_t_ssh_hosts)" -- "$cur")); }
+  complete -F _t_ssh_bash tssh
+fi
+
+
 # agent — launch THIS host's AI agent (claude/codex/…). Same resolver the `dev` layout uses.
 # Per-host config: `export TMUX_AGENT=<cmd>` or `echo <cmd> > ~/.config/tmux/agent.local`.
 agent() { "$HOME/.config/tmux/scripts/agent.sh"; }
@@ -73,3 +98,17 @@ tcopy() {
   tmux capture-pane -pJS - -t "${TMUX_PANE}" | tmux load-buffer -w -
   echo "tcopy: scrollback copied to the clipboard"
 }
+
+# ── OSC 133 semantic prompts (so `prefix + Y` can copy only the last output) ────────────────
+# tmux (>=3.4) moves between prompts with previous-prompt/next-prompt ONLY if the shell marks
+# where the prompt (OSC 133;A) and the output (OSC 133;C) begin. We emit them from zsh inside
+# tmux; the `prefix + Y` binding (tmux.conf) uses these marks. If your terminal (e.g. Ghostty)
+# already emits OSC 133, export T_NO_OSC133=1 to avoid duplicate marks.
+if [ -n "${ZSH_VERSION:-}" ] && [ -n "${TMUX:-}" ] && [ -z "${T_NO_OSC133:-}" ]; then
+  _t_osc133_precmd()  { printf '\033]133;A\033\\'; }   # prompt start
+  _t_osc133_preexec() { printf '\033]133;C\033\\'; }   # command output start
+  autoload -Uz add-zsh-hook 2>/dev/null && {
+    add-zsh-hook precmd  _t_osc133_precmd
+    add-zsh-hook preexec _t_osc133_preexec
+  }
+fi

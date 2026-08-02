@@ -14,9 +14,9 @@
 - `tmux.conf` is the real, versioned config, auto-loaded because the repo lives at `~/.config/tmux`. There are no templates — tmux expands `~`/`$HOME` natively.
 - `sessions/*.conf` are **sh fragments sourced by the shell functions** (`. dev.conf`) with `$SESS`/`$DIR` in scope — they are **not** loaded with `tmux source-file` (which does not expand shell variables). This keeps any `set-option -t` next to the `new-session`.
 - **SSH shield (two layers)**: `scripts/session-created.sh` (the `session-created` hook) sets a per-session `default-command` for every `ssh_*` session, and `scripts/ssh-host.sh` is that command (host by argument; no host → local shell, never SSH). `default-command` is a **session option** → it applies to `new-window` AND `split-window` and never leaks to local sessions.
-- `scripts/` are POSIX sh helpers: `agent.sh` (resolve the AI agent), `ssh-host.sh`, `hostname-color.sh` (deterministic host pill), `session-goto.sh` (index → `switch-client`), `session-created.sh`, `palette.sh` (fzf command palette).
-- `shell/functions.sh` defines `t` / `tcwd` / `tssh` / `tcopy` / `agent` plus the `ulimit` block; it is sourced from the rc by `bootstrap.sh`.
-- The status bar reuses the `vscode-light` palette; the hostname pill comes from `hostname-color.sh`.
+- `scripts/` are POSIX sh helpers: `agent.sh` (resolve the AI agent), `ssh-host.sh`, `session-color.sh` (deterministic per-session/host pill colour by name CRC), `session-goto.sh` (index → `switch-client`), `session-created.sh` (SSH shield + applies the pill colour), `palette.sh` (fzf command palette).
+- `shell/functions.sh` defines `t` / `tp` (alias `tcwd`) / `tssh` / `tcopy` / `agent` plus the `ulimit` block; it is sourced from the rc by `bootstrap.sh`.
+- The status bar uses the `vscode-light` palette (blue `#007ACC` bar); each session's name pill is tinted by `session-color.sh` (stable per name, so `ssh_<host>` is stable per host).
 - Work config is layered at the end of `tmux.conf` via `source-file -q` of `~/.config/tmux-work/work.conf` (private repo) and `~/.config/tmux/local.conf` (per-machine, gitignored).
 - Neovim interplay: `Alt-hjkl` are `is_vim`-guarded so smart-splits keeps working; nvim's clipboard/focus rely on `set-clipboard on` and `focus-events on`. See README.
 
