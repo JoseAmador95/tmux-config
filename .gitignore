@@ -1,0 +1,8 @@
+# Per-machine tmux overrides, sourced last by tmux.conf. Never committed.
+/local.conf
+
+# Per-host AI-agent choice (e.g. `echo codex > agent.local`).
+/agent.local
+
+# macOS cruft
+.DS_Store
