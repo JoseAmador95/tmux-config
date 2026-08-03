@@ -20,8 +20,16 @@
 # #[…] markup is added after the escaping, so it still works.
 set -u
 
-ACCENT='#005FB8'
-DIM='#8A8F98'
+# Colours come from the @thm_* theme block in tmux.conf, the single place the palette lives; the
+# literals are only a fallback for a run outside tmux. This script always runs from a tmux hook.
+thm() {
+  v=$(tmux display-message -p "#{E:@thm_$1}" 2>/dev/null) || v=''
+  [ -n "$v" ] || v="$2"
+  printf '%s' "$v"
+}
+ACCENT=$(thm accent '#1e66f5')
+INK=$(thm    ink    '#ffffff')
+DIM=$(thm    dim    '#6c6f85')
 
 # Which session to mark. It has to come from the ATTACHED CLIENT, not from `#S`: this script runs
 # from the session-created hook too, and there "#S" is the session that was just created — which
@@ -48,7 +56,7 @@ strip=$(
         # its NUMBER — repeating the name put it on screen twice. A mini pill rather than a bare
         # bold digit: among named entries a naked "3" reads as a session called 3, whereas an
         # accent pill is already this bar's word for "this is the current one".
-        acc="${acc} #[fg=${ACCENT},bg=terminal]#[fg=#FFFFFF,bg=${ACCENT},bold]${i}#[fg=${ACCENT},bg=terminal]#[default]"
+        acc="${acc} #[fg=${ACCENT},bg=terminal]#[fg=${INK},bg=${ACCENT},bold]${i}#[fg=${ACCENT},bg=terminal]#[default]"
       else
         acc="${acc}#[fg=${DIM},nobold] ${i} ${esc}"
       fi

@@ -58,10 +58,16 @@ apply() {
       ;;
   esac
 
-  # Deterministic pill colour (stable per name; ssh_<host> → stable per host).
+  # Pill background AND its text: session-color.sh prints them as "bg<TAB>ink" because the two
+  # travel together — a Latte accent light enough to need black text cannot share one global
+  # foreground with the accent, which needs white.
   # Plain -t is already an exact session lookup here (a session "foo" does not match "foobar");
   # the "=" exact-match prefix that works for switch-client is REJECTED by set-option.
-  tmux set-option -t "$s" @pill "$("$SCRIPTS/session-color.sh" "$s")"
+  "$SCRIPTS/session-color.sh" "$s" | {
+    IFS='	' read -r bg ink
+    [ -n "$bg" ] && tmux set-option -t "$s" @pill "$bg"
+    [ -n "$ink" ] && tmux set-option -t "$s" @pill_ink "$ink"
+  }
 }
 
 tmux list-sessions -F '#{session_name}' 2>/dev/null | while IFS= read -r s; do
