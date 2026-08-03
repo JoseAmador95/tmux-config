@@ -98,13 +98,14 @@ terminal from light to dark with no per-theme config and the blue lives only in 
 the move VSCode made between Light+/Dark+ and Light/Dark Modern; the accent came along, `#007ACC` →
 `#005FB8` (white on it: 4.51:1 → 6.31:1).
 
-- **left** — the session name in a pill, tinted by a deterministic colour per name
-  (`scripts/session-color.sh`), so `ssh_<host>` is stable per host. Amber while the prefix is held.
+- **left** — the session name in an accent pill, amber while the prefix is held. `ssh_<host>`
+  sessions get a colour of their own instead (`scripts/session-color.sh`, stable per host), so a
+  remote session never looks like a local one.
 - **centre** — the window list, anchored with `status-justify absolute-centre` so the tabs do not
   slide when the session name changes length. Each window carries an icon for what is running in it.
 - **right** — the current mode (prefix / copy-mode / zoom / synchronized), then the numbered session
-  strip that `prefix + <digit>` jumps to.
-- **second row** — a one-cell accent rule. Drop `set -g status 2` to get the terminal row back.
+  strip that `prefix + <digit>` jumps to. The session you are on appears there as its **number**
+  only — its name is already in the pill on the left.
 
 Nothing on the bar shells out — there is no `#()` anywhere, so a redraw never forks. The session
 strip is computed by `scripts/session-strip.sh` from the session hooks into a user option the bar
