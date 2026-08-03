@@ -44,15 +44,22 @@ apply() {
   tmux set-option -t "$s" @pill "$("$SCRIPTS/session-color.sh" "$s")"
 }
 
+# The status bar's session strip is derived from the same list, so anything that changes a session
+# has to refresh it. Calling it from here covers create and rename; tmux.conf hooks the two events
+# that do not pass through this script (a session closing, and the client switching session).
+refresh_strip() { "$SCRIPTS/session-strip.sh"; }
+
 # --all: tint every live session. Sessions that existed before this config was loaded never got a
 # session-created hook, so without this sweep they kept the default pill forever.
 if [ "${1:-}" = '--all' ]; then
   tmux list-sessions -F '#{session_name}' 2>/dev/null | while IFS= read -r s; do
     [ -n "$s" ] && apply "$s"
   done
+  refresh_strip
   exit 0
 fi
 
 s="${1:-}"
 [ -n "$s" ] || exit 0
 apply "$s"
+refresh_strip
