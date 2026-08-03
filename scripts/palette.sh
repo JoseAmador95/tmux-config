@@ -4,6 +4,7 @@
 # and filters (--with-nth 2). Runs inside display-popup -E; the popup closes on run. Fills the
 # gap documented in README/AGENTS/bootstrap ("Alt-Space command palette").
 set -u
+. "$(cd "$(dirname "$0")" && pwd)/fzf-style.sh"   # --reverse + the shared vscode-modern --color
 
 items() {   # "tmux command<TAB>label" (printf recycles the format per pair)
   printf '%s\t%s\n' \
@@ -24,8 +25,7 @@ items() {   # "tmux command<TAB>label" (printf recycles the format per pair)
     'source-file ~/.config/tmux/tmux.conf'                     'reload config'
 }
 
-items | fzf \
-  --delimiter '\t' --with-nth 2 --reverse --info=inline --cycle \
+items | fzf $(fzf_style) \
+  --delimiter '\t' --with-nth 2 --info=inline --cycle \
   --prompt '> ' --header 'filter · Enter runs · Esc cancels' \
-  --color 'fg+:#ffffff,bg+:#007ACC,prompt:#007ACC,header:#005A9E,border:#007ACC' \
   --bind 'enter:become(c={1}; eval tmux "$c")'

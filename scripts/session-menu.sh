@@ -8,6 +8,7 @@
 # (same as the status bar and `prefix + <digit>`), so the popup numbers line up with those.
 set -u
 SELF="$HOME/.config/tmux/scripts/session-menu.sh"
+. "$(cd "$(dirname "$0")" && pwd)/fzf-style.sh"   # --reverse + the shared vscode-modern --color
 
 # --list: emit "rawname<TAB>pretty" lines (numbered, current marked with a bullet). Used for the
 # initial feed and by fzf's reload() after r/n/x. Field 1 = raw name (what actions target);
@@ -24,11 +25,10 @@ if [ "${1:-}" = "--list" ]; then
 fi
 
 # interactive: build the fzf argument vector in $@ (POSIX has no arrays).
-set -- \
-  --no-sort --info=hidden --reverse --cycle --pointer '›' \
+set -- $(fzf_style) \
+  --no-sort --info=hidden --cycle --pointer '›' \
   --delimiter '\t' --with-nth 2 --prompt 'session ' \
   --header 'j/k move · 1-9 switch · r rename · n new · x kill · s tree · q quit' \
-  --color 'fg+:#ffffff,bg+:#007ACC,header:#005A9E,prompt:#007ACC,pointer:#007ACC,border:#007ACC' \
   --disabled \
   --bind 'j:down,k:up,g:first,G:last,ctrl-d:half-page-down,ctrl-u:half-page-up' \
   --bind 'enter:become(s={1}; tmux switch-client -t "=$s")' \
