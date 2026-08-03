@@ -44,7 +44,11 @@ strip=$(
       [ "$i" -le 9 ] || break
       esc=$(printf '%s' "$s" | sed 's/#/##/g')
       if [ "$s" = "$cur" ]; then
-        acc="${acc}#[fg=${ACCENT},bold] ${i} ${esc}#[default]"
+        # The session you are ON is already named in the status-left pill, so the strip shows only
+        # its NUMBER — repeating the name put it on screen twice. A mini pill rather than a bare
+        # bold digit: among named entries a naked "3" reads as a session called 3, whereas an
+        # accent pill is already this bar's word for "this is the current one".
+        acc="${acc} #[fg=${ACCENT},bg=terminal]#[fg=#FFFFFF,bg=${ACCENT},bold]${i}#[fg=${ACCENT},bg=terminal]#[default]"
       else
         acc="${acc}#[fg=${DIM},nobold] ${i} ${esc}"
       fi
