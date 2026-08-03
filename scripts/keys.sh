@@ -2,7 +2,7 @@
 # keys.sh — which-key style cheatsheet of the custom bindings, in a searchable fzf popup. Replaces
 # the raw `list-keys` of `prefix + ?`. Reference only: type to filter, Esc closes.
 set -u
-. "$(cd "$(dirname "$0")" && pwd)/fzf-style.sh"   # --reverse + the shared vscode-modern --color
+. "$(cd "$(dirname "$0")" && pwd)/fzf-style.sh"   # --reverse + the shared --color, from the theme
 
 cat <<'EOF' | fzf $(fzf_style) --info=inline --no-sort --prompt 'keys ' \
     --header 'filter · Esc closes'

@@ -29,7 +29,7 @@
 # dismisses the menu again and leaves the popup up. The header says "right-drag" for that reason.
 set -u
 SELF=$(cd "$(dirname "$0")" && pwd)/$(basename "$0")   # reload() needs an absolute path
-. "$(dirname "$SELF")/fzf-style.sh"                    # --reverse + the shared vscode-modern --color
+. "$(dirname "$SELF")/fzf-style.sh"                    # --reverse + the shared --color, from the theme
 
 ASK="$(dirname "$SELF")/ask.sh"
 

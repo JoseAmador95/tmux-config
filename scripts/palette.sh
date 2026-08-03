@@ -4,7 +4,7 @@
 # and filters (--with-nth 2). Runs inside display-popup -E; the popup closes on run. Fills the
 # gap documented in README/AGENTS/bootstrap ("Alt-Space command palette").
 set -u
-. "$(cd "$(dirname "$0")" && pwd)/fzf-style.sh"   # --reverse + the shared vscode-modern --color
+. "$(cd "$(dirname "$0")" && pwd)/fzf-style.sh"   # --reverse + the shared --color, from the theme
 
 items() {   # "tmux command<TAB>label" (printf recycles the format per pair)
   printf '%s\t%s\n' \

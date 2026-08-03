@@ -93,12 +93,22 @@ that menu again — it is a drag, not a click.
 
 ## The status bar
 
-At the top, painted on `bg=terminal`: the bar has no background of its own, so it follows the
-terminal from light to dark with no per-theme config and the blue lives only in the pills. This is
-the move VSCode made between Light+/Dark+ and Light/Dark Modern; the accent came along, `#007ACC` →
-`#005FB8` (white on it: 4.51:1 → 6.31:1).
+**Catppuccin Latte**, on a white terminal. The bar paints no background of its own (`bg=terminal`),
+so it takes Ghostty's, and the accent — Latte `blue #1e66f5` — lives only in the pills.
 
-- **left** — the session name in an accent pill, amber while the prefix is held. `ssh_<host>`
+The whole palette is one block at the top of `tmux.conf` §3: the 26 Latte colours, then the roles
+that point at them (`@thm_accent`, `@thm_dim`, `@thm_urgent`…). `tmux.conf` reads them with
+`#{E:@thm_…}` and the scripts with `tmux display-message -p '#{E:@thm_…}'`, so **changing theme is
+that block and nothing else**.
+
+Three places deliberately depart from upstream `catppuccin/tmux`, all for legibility — which
+Catppuccin's own style guide asks for over fidelity. Pill text is `#ffffff`, not `crust`, because
+crust on an accent clears 4.5:1 on *no* Latte accent (upstream's own default mauve pill is 4.09:1).
+Inactive pane borders use `overlay1`, not `overlay0`, which on white is 2.60:1 and fails even the
+3:1 UI threshold. And `message-style` is white on the accent rather than upstream's teal on
+`overlay0`, which is 1.44:1.
+
+- **left** — the session name in an accent pill, Latte `red` while the prefix is held. `ssh_<host>`
   sessions get a colour of their own instead (`scripts/session-color.sh`, stable per host), so a
   remote session never looks like a local one.
 - **centre** — the window list, anchored with `status-justify absolute-centre` so the tabs do not
