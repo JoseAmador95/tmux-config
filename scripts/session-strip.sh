@@ -27,6 +27,9 @@ DIM='#8A8F98'
 # from the session-created hook too, and there "#S" is the session that was just created — which
 # for a detached `new-session -d` is precisely the one you are NOT looking at. With no client at
 # all (a scripted server), fall back to #S so the strip still marks something.
+# @session_strip is a GLOBAL option, so the "current" mark is shared: with two clients attached to
+# different sessions both bars would highlight the first client's. This config is built around one
+# terminal window (see README), so that is an accepted limitation, not an oversight.
 cur=$(tmux list-clients -F '#{client_session}' 2>/dev/null | head -n 1)
 [ -n "$cur" ] || cur=$(tmux display-message -p '#S' 2>/dev/null)
 

@@ -87,7 +87,9 @@ Leaving search clears the filter, so the digits always address the full list —
 **Closing it with the mouse:** a left-click outside the popup does not close it, and cannot be made
 to. tmux's `popup_key_cb` returns "keep open" for out-of-bounds mouse events in every version from
 3.4 to master _and_ swallows the click, so fzf never receives it and `--no-mouse` changes nothing.
-Use **right-click outside → Close** (tmux's own popup menu, ≥ 3.3), or `q` / `Esc`.
+Use `q` / `Esc`, or the mouse gesture tmux does offer: **right-press outside, drag onto `Close`,
+release** (tmux's own popup menu, ≥ 3.3). A right click-and-release in place only opens and closes
+that menu again — it is a drag, not a click.
 
 ## The status bar
 
