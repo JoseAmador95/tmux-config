@@ -29,19 +29,42 @@ set -u
 SELF=$(cd "$(dirname "$0")" && pwd)/$(basename "$0")   # reload() needs an absolute path
 . "$(dirname "$SELF")/fzf-style.sh"                    # --reverse + the shared vscode-modern --color
 
-# --list: emit "rawname<TAB>pretty" lines (numbered, current marked with a bullet). Used for the
-# initial feed and by fzf's reload() after r/n/x. Field 1 = raw name (what actions target);
-# field 2 = the pretty column fzf shows (--with-nth 2).
-if [ "${1:-}" = "--list" ]; then
-  cur=$(tmux display-message -p '#S' 2>/dev/null)
-  i=0
-  tmux list-sessions -F '#{session_name}' 2>/dev/null | sort | while IFS= read -r s; do
-    i=$((i + 1))
-    if [ "$s" = "$cur" ]; then mark="▸"; else mark=" "; fi
-    printf '%s\t%s %2d  %s\n' "$s" "$mark" "$i" "$s"
-  done
-  exit 0
-fi
+ASK="$(dirname "$SELF")/ask.sh"
+
+# Sub-commands. --list feeds fzf; the other three are what the r/n/x keys run through execute(),
+# kept here rather than inlined in the --bind strings so that the quoting stays readable and the
+# cancel path (ask.sh exits non-zero) can be handled with a plain `|| exit 0`.
+case "${1:-}" in
+  --list)
+    # "rawname<TAB>pretty" (numbered, current marked with a bullet). Field 1 = raw name, which is
+    # what the actions target; field 2 = the pretty column fzf shows (--with-nth 2).
+    cur=$(tmux display-message -p '#S' 2>/dev/null)
+    i=0
+    tmux list-sessions -F '#{session_name}' 2>/dev/null | sort | while IFS= read -r s; do
+      i=$((i + 1))
+      if [ "$s" = "$cur" ]; then mark="▸"; else mark=" "; fi
+      printf '%s\t%s %2d  %s\n' "$s" "$mark" "$i" "$s"
+    done
+    exit 0 ;;
+
+  --rename)
+    s="${2:-}"; [ -n "$s" ] || exit 0
+    new=$("$ASK" "rename ${s} to" "$s") || exit 0
+    [ "$new" = "$s" ] && exit 0
+    tmux rename-session -t "=$s" -- "$new"
+    exit 0 ;;
+
+  --new)
+    name=$("$ASK" 'new session') || exit 0
+    tmux new-session -d -s "$name"
+    exit 0 ;;
+
+  --kill)
+    s="${2:-}"; [ -n "$s" ] || exit 0
+    "$ASK" --confirm "kill ${s}?" || exit 0
+    tmux kill-session -t "=$s"
+    exit 0 ;;
+esac
 
 # Every key that means "do something" in action mode. `/` is in the list too: once search is on it
 # must type a slash like any other character. Kept as one comma-separated string because that is
@@ -80,9 +103,9 @@ set -- $(fzf_style) \
   --bind 'q:abort' \
   --bind "/:enable-search+unbind(${ACTIONS})+change-prompt(/ )+change-header(${HDR_SEARCH})" \
   --bind "${ESC}" \
-  --bind "r:execute(s={1}; printf \"rename %s -> \" \"\$s\"; IFS= read -r nn; [ -n \"\$nn\" ] && tmux rename-session -t \"=\$s\" -- \"\$nn\")+reload(${SELF} --list)" \
-  --bind "n:execute(printf \"new session: \"; IFS= read -r ns; [ -n \"\$ns\" ] && tmux new-session -d -s \"\$ns\")+reload(${SELF} --list)" \
-  --bind "x:execute(s={1}; printf \"kill %s? [y/N] \" \"\$s\"; read -r a; [ \"\$a\" = y ] && tmux kill-session -t \"=\$s\")+reload(${SELF} --list)"
+  --bind "r:execute(${SELF} --rename {1})+reload(${SELF} --list)" \
+  --bind "n:execute(${SELF} --new)+reload(${SELF} --list)" \
+  --bind "x:execute(${SELF} --kill {1})+reload(${SELF} --list)"
 
 # number keys: pos(N) then switch to that row (jump + switch in one press). These stay in sync with
 # the printed column because digits are unbound while searching and Esc clears the query, so pos(N)
