@@ -82,8 +82,25 @@ fi
 for dep in tmux hostname cksum ssh; do
   command -v "$dep" >/dev/null 2>&1 || warn "missing '$dep' in PATH"
 done
-command -v fzf >/dev/null 2>&1 || \
-  warn "optional: 'fzf' not found (Alt-Space palette falls back to the command prompt)"
+# fzf is NOT optional any more, whatever this script used to say: Alt-s (session manager), the
+# click on the session pill, Alt-Space (palette) and prefix + ? (keys) are all fzf popups, and
+# there is no fallback anywhere in the code — the popup simply fails to launch. The session
+# manager's `/` search mode additionally needs $FZF_INPUT_STATE, which landed in fzf 0.59; on an
+# older fzf everything still works except that Esc leaves search by closing the popup.
+if ! command -v fzf >/dev/null 2>&1; then
+  warn "'fzf' not found — Alt-s, Alt-Space and prefix + ? will not open (macOS: brew install fzf)"
+else
+  fver=$(fzf --version 2>/dev/null | awk '{print $1}')
+  fmaj=$(printf '%s' "$fver" | cut -d. -f1 | tr -dc '0-9')
+  fmin=$(printf '%s' "$fver" | cut -d. -f2 | tr -dc '0-9')
+  if [ -z "$fmaj" ] || [ -z "$fmin" ]; then
+    warn "could not parse fzf version ('$fver'); the session popup's / search needs >= 0.59"
+  elif [ "$fmaj" -eq 0 ] && [ "$fmin" -lt 59 ]; then
+    warn "fzf $fver < 0.59 — the session popup works, but Esc leaves its / search by closing it"
+  else
+    info "fzf $fver (>= 0.59)"
+  fi
+fi
 
 cat <<'EOF'
 

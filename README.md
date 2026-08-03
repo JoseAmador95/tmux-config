@@ -9,8 +9,8 @@ per-project sessions and sessions dedicated to SSH hosts — instead of juggling
 
 Two requirements were structurally impossible in Zellij and are native in tmux:
 
-- **Never mix local and SSH.** In a Zellij `ssh_*` session a new *tab* entered the remote host but a
-  pane *split* opened a **local** shell, because the `zellij-switch` plugin cannot set `default_shell`
+- **Never mix local and SSH.** In a Zellij `ssh_*` session a new _tab_ entered the remote host but a
+  pane _split_ opened a **local** shell, because the `zellij-switch` plugin cannot set `default_shell`
   per session. In tmux, `default-command` is a **session option**: it applies to `new-window` **and**
   `split-window`, and it does not leak to other sessions.
 - **Extend the personal config with a work config.** Zellij has no `include`. tmux composes configs
@@ -29,17 +29,24 @@ else `~/.zshrc`/`~/.bashrc`) inside a `# >>> tmux-functions >>>` block. tmux aut
 `~/.config/tmux/tmux.conf`, so the config itself needs no wiring. It coexists with an existing
 Zellij install (separate servers).
 
-Requires **tmux ≥ 3.4**. Optional: `fzf` (for the `Alt-Space` command palette).
+Requires **tmux ≥ 3.4** and **`fzf` ≥ 0.59** — `fzf` is not optional: `Alt-s`, `Alt-Space` and
+`prefix + ?` are all fzf popups and there is no fallback. Below 0.59 everything still works except
+that `Esc` leaves the session popup's `/` search by closing the popup instead of returning to the
+action keys.
+
+The status bar uses **Nerd Font** glyphs (pill caps and one icon per window) and therefore needs a
+**UTF-8 locale**: with `LC_CTYPE=POSIX` tmux silently drops those characters and the pills lose
+their rounded ends.
 
 ## Usage
 
-| Command | What it does |
-|---|---|
-| `t` / `t <name>` | attach/create the `main` session (or `<name>`) |
-| `tp [dir]` | session with the `dev` layout (`agent · editor · git · term`), rooted in `dir` (default: cwd). `tcwd` is a kept alias |
-| `tssh <host>` | dedicated SSH session `ssh_<host>`; every pane/window enters the host |
-| `tcopy` | copy the current pane's full scrollback to the clipboard |
-| `agent` | run this host's AI agent (see below) |
+| Command          | What it does                                                                                                          |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `t` / `t <name>` | attach/create the `main` session (or `<name>`)                                                                        |
+| `tp [dir]`       | session with the `dev` layout (`agent · editor · git · term`), rooted in `dir` (default: cwd). `tcwd` is a kept alias |
+| `tssh <host>`    | dedicated SSH session `ssh_<host>`; every pane/window enters the host                                                 |
+| `tcopy`          | copy the current pane's full scrollback to the clipboard                                                              |
+| `agent`          | run this host's AI agent (see below)                                                                                  |
 
 The `dev` layout's **agent** window resolves its command from `$TMUX_AGENT`, else the first useful
 line of `~/.config/tmux/agent.local`, else a shell with a warning. Per host:
@@ -47,22 +54,63 @@ line of `~/.config/tmux/agent.local`, else a shell with a warning. Per host:
 
 ### Keys (prefix is `Ctrl-a`, or `Ctrl-Space` as a secondary leader)
 
-| Key | Action |
-|---|---|
-| `Alt-h/j/k/l` | move between panes (forwarded to nvim inside a vim pane) |
-| `Alt-n` / `Alt-t` | split pane / new window |
-| `Alt-1`…`Alt-9` | select window |
-| `Alt-,` / `Alt-.` | previous / next session |
-| `Alt-s` | visual session tree (keyboard + mouse) |
-| `prefix + Tab` | last session (toggle) |
-| `prefix + 1`…`9` | jump to the N-th session in the bar |
-| `prefix + H/J/K/L` | resize pane (repeatable) |
-| `prefix + R` | respawn a dead pane (revive a closed dev-layout tool window) |
-| `prefix + r` | reload `tmux.conf` |
+| Key                | Action                                                        |
+| ------------------ | ------------------------------------------------------------- |
+| `Alt-h/j/k/l`      | move between panes (forwarded to nvim inside a vim pane)      |
+| `Alt-n` / `Alt-t`  | split pane / new window                                       |
+| `Alt-1`…`Alt-9`    | select window                                                 |
+| `Alt-←` / `Alt-→`  | previous / next window (tab)                                  |
+| `Alt-,` / `Alt-.`  | previous / next session                                       |
+| `Alt-s`            | session manager popup (below); clicking the pill opens it too |
+| `Alt-Space`        | command palette                                               |
+| `Alt-v`            | enter copy mode                                               |
+| `prefix + Tab`     | last session (toggle)                                         |
+| `prefix + 1`…`9`   | jump to the N-th session in the bar                           |
+| `prefix + H/J/K/L` | resize pane (repeatable)                                      |
+| `prefix + R`       | respawn a dead pane (revive a closed dev-layout tool window)  |
+| `prefix + r`       | reload `tmux.conf`                                            |
+| `prefix + ?`       | searchable cheatsheet of these bindings                       |
+
+### The session manager (`Alt-s`)
+
+Two modes, like vim, because type-to-filter and single-letter actions cannot share a keyboard:
+
+| Mode                  | Keys                                                                                                                                                                |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **actions** (default) | `1`…`9` jump + switch · `j`/`k` move · `g`/`G` ends · `r` rename · `n` new · `x` kill · `s` classic `choose-tree` · `Enter` / double-click switch · `q`/`Esc` close |
+| **search** (`/`)      | type to filter · `Enter` switch · `Esc` back to the action keys                                                                                                     |
+
+`r`, `n` and `x` open a prompt that **`Esc` cancels**; `x` confirms with the cursor parked on `no`.
+Leaving search clears the filter, so the digits always address the full list — the same order as
+`prefix + <digit>` and the numbers on the status bar.
+
+**Closing it with the mouse:** a left-click outside the popup does not close it, and cannot be made
+to. tmux's `popup_key_cb` returns "keep open" for out-of-bounds mouse events in every version from
+3.4 to master _and_ swallows the click, so fzf never receives it and `--no-mouse` changes nothing.
+Use **right-click outside → Close** (tmux's own popup menu, ≥ 3.3), or `q` / `Esc`.
+
+## The status bar
+
+At the top, painted on `bg=terminal`: the bar has no background of its own, so it follows the
+terminal from light to dark with no per-theme config and the blue lives only in the pills. This is
+the move VSCode made between Light+/Dark+ and Light/Dark Modern; the accent came along, `#007ACC` →
+`#005FB8` (white on it: 4.51:1 → 6.31:1).
+
+- **left** — the session name in a pill, tinted by a deterministic colour per name
+  (`scripts/session-color.sh`), so `ssh_<host>` is stable per host. Amber while the prefix is held.
+- **centre** — the window list, anchored with `status-justify absolute-centre` so the tabs do not
+  slide when the session name changes length. Each window carries an icon for what is running in it.
+- **right** — the current mode (prefix / copy-mode / zoom / synchronized), then the numbered session
+  strip that `prefix + <digit>` jumps to.
+- **second row** — a one-cell accent rule. Drop `set -g status 2` to get the terminal row back.
+
+Nothing on the bar shells out — there is no `#()` anywhere, so a redraw never forks. The session
+strip is computed by `scripts/session-strip.sh` from the session hooks into a user option the bar
+reads for free.
 
 In copy mode (`prefix + [` or scroll up): `v` select, `y` / `Enter` / `Ctrl-C` / mouse-drag-release copy
 **without** leaving copy mode (the selection also reaches the system clipboard); `q` / `Esc` to exit.
-The `dev` tool windows (`agent · editor · git`) stay put when their app exits — the pane goes *dead*
+The `dev` tool windows (`agent · editor · git`) stay put when their app exits — the pane goes _dead_
 instead of the window closing, so `prefix + R` relaunches it (`term` stays a disposable shell).
 
 ## The SSH shield
