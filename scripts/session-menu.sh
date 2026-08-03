@@ -23,8 +23,10 @@
 #
 # DEAD END -- clicking outside the popup cannot close it. tmux's popup_key_cb returns 0 ("keep
 # open") for out-of-bounds mouse events in every version from 3.4 to master AND swallows the click,
-# so fzf never receives it; `--no-mouse` changes nothing. The native way out is a RIGHT-click
-# outside, which opens tmux's own popup menu with a Close entry (tmux >= 3.3). The header says so.
+# so fzf never receives it; `--no-mouse` changes nothing. The native way out is a RIGHT-press
+# outside, which opens tmux's own popup menu with a Close entry (tmux >= 3.3) — and it is a
+# GESTURE, not a click: press, drag onto Close, release. A right press-and-release in place just
+# dismisses the menu again and leaves the popup up. The header says "right-drag" for that reason.
 set -u
 SELF=$(cd "$(dirname "$0")" && pwd)/$(basename "$0")   # reload() needs an absolute path
 . "$(dirname "$SELF")/fzf-style.sh"                    # --reverse + the shared vscode-modern --color
@@ -69,9 +71,12 @@ esac
 # Every key that means "do something" in action mode. `/` is in the list too: once search is on it
 # must type a slash like any other character. Kept as one comma-separated string because that is
 # exactly the argument shape unbind()/rebind() want.
+# The `/` bind also clear-query's: keys that are NOT actions (b, e, t…) are still swallowed into
+# fzf's invisible query buffer in action mode, so without it the filter would start out already
+# narrowed by whatever you had mistyped.
 ACTIONS='j,k,g,G,r,n,x,s,q,1,2,3,4,5,6,7,8,9,/'
 
-HDR_ACTION='/ search · j/k move · 1-9 switch · r rename · n new · x kill · s tree · q quit · right-click outside to close'
+HDR_ACTION='/ search · j/k move · 1-9 switch · r rename · n new · x kill · s tree · q quit · right-drag outside for Close'
 HDR_SEARCH='type to filter · Enter switch · Esc back to the action keys'
 
 # Esc: leave search mode if we are in it, otherwise close the popup. `transform` runs a command
@@ -101,7 +106,7 @@ set -- $(fzf_style) \
   --bind "double-click:${SWITCH}" \
   --bind 's:become(tmux choose-tree -Zs)' \
   --bind 'q:abort' \
-  --bind "/:enable-search+unbind(${ACTIONS})+change-prompt(/ )+change-header(${HDR_SEARCH})" \
+  --bind "/:clear-query+enable-search+unbind(${ACTIONS})+change-prompt(/ )+change-header(${HDR_SEARCH})" \
   --bind "${ESC}" \
   --bind "r:execute(${SELF} --rename {1})+reload(${SELF} --list)" \
   --bind "n:execute(${SELF} --new)+reload(${SELF} --list)" \
