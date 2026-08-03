@@ -1,9 +1,11 @@
 #!/bin/sh
 # keys.sh — which-key style cheatsheet of the custom bindings, in a searchable fzf popup. Replaces
 # the raw `list-keys` of `prefix + ?`. Reference only: type to filter, Esc closes.
-cat <<'EOF' | fzf --reverse --info=inline --no-sort --prompt 'keys ' \
-    --header 'filter · Esc closes' \
-    --color 'fg+:#ffffff,bg+:#007ACC,prompt:#007ACC,header:#005A9E,border:#007ACC'
+set -u
+. "$(cd "$(dirname "$0")" && pwd)/fzf-style.sh"   # --reverse + the shared vscode-modern --color
+
+cat <<'EOF' | fzf $(fzf_style) --info=inline --no-sort --prompt 'keys ' \
+    --header 'filter · Esc closes'
 NAVIGATION
   M-h/j/k/l     move focus between panes (or nvim splits)
   M-n           split (Zellij-like, longer axis)  M-t   new window in the cwd
