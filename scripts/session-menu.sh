@@ -49,7 +49,7 @@ case "${1:-}" in
     # what the actions target; field 2 = the pretty column fzf shows (--with-nth 2).
     cur=$(tmux display-message -p '#S' 2>/dev/null)
     i=0
-    tmux list-sessions -F '#{session_name}' 2>/dev/null | sort | while IFS= read -r s; do
+    "$(dirname "$SELF")/session-order.sh" 2>/dev/null | while IFS= read -r s; do
       i=$((i + 1))
       if [ "$s" = "$cur" ]; then mark="▸"; else mark=" "; fi
       printf '%s\t%s %2d  %s\n' "$s" "$mark" "$i" "$s"

@@ -8,8 +8,14 @@
 # The other option, #(…) in status-right, would fork a process on every redraw for a list that only
 # changes when a session is created, renamed, killed or switched to. Reading #{@…} is free.
 #
-# Order is `list-sessions | sort`, the same order session-goto.sh and session-menu.sh use, so the
-# digit on screen, the digit you press and the row in the popup are always the same session.
+# Order comes from session-order.sh — `main` first, then most recently used — and NOTHING here
+# sorts. session-goto.sh and session-menu.sh call the same script, which is what makes the digit on
+# screen, the digit you press and the row in the popup the same session. It used to be three
+# separate `| sort` calls; that is three copies of a rule and one edit away from drifting.
+#
+# Because the order is by recent use, the digits MOVE as you switch sessions — this script is
+# re-run by the client-session-changed hook, so the bar is always right, but a digit is a position
+# you are looking at rather than a name you can memorise.
 #
 # Only the first 9 are rendered: `prefix + <digit>` cannot reach a tenth, so a longer strip would
 # be advertising jumps that do not exist.
@@ -50,7 +56,7 @@ cur=$(tmux list-clients -F '#{client_session}' 2>/dev/null | head -n 1)
 # The while loop must not run in a subshell of this script's main body, or the accumulator would be
 # lost; keeping the whole pipeline inside one command substitution is the POSIX way to do that.
 strip=$(
-  tmux list-sessions -F '#{session_name}' 2>/dev/null | sort | {
+  "$(cd "$(dirname "$0")" && pwd)/session-order.sh" 2>/dev/null | {
     i=0
     acc=''
     while IFS= read -r s; do
