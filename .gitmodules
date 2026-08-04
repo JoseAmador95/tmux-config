@@ -1,0 +1,19 @@
+[submodule "plugins/tmux-fingers"]
+	path = plugins/tmux-fingers
+	url = https://github.com/Morantron/tmux-fingers
+	ignore = untracked
+[submodule "plugins/tmux-open"]
+	path = plugins/tmux-open
+	url = https://github.com/tmux-plugins/tmux-open
+[submodule "plugins/tmux-easy-motion"]
+	path = plugins/tmux-easy-motion
+	url = https://github.com/IngoMeyer441/tmux-easy-motion
+[submodule "plugins/tmux-fuzzback"]
+	path = plugins/tmux-fuzzback
+	url = https://github.com/roosta/tmux-fuzzback
+[submodule "plugins/tmux-sessionist"]
+	path = plugins/tmux-sessionist
+	url = https://github.com/tmux-plugins/tmux-sessionist
+[submodule "plugins/extrakto"]
+	path = plugins/extrakto
+	url = https://github.com/laktak/extrakto
