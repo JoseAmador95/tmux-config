@@ -61,7 +61,7 @@ line of `~/.config/tmux/agent.local`, else a shell with a warning. Per host:
 | `Alt-1`…`Alt-9`    | select window                                                 |
 | `Alt-←` / `Alt-→`  | previous / next window (tab)                                  |
 | `Alt-,` / `Alt-.`  | previous / next session                                       |
-| `Alt-s`            | session manager popup (below); clicking the pill opens it too |
+| `Alt-s`            | session manager popup (below); clicking the session strip too |
 | `Alt-Space`        | command palette                                               |
 | `Alt-v`            | enter copy mode                                               |
 | `prefix + Tab`     | last session (toggle)                                         |
@@ -70,6 +70,14 @@ line of `~/.config/tmux/agent.local`, else a shell with a warning. Per host:
 | `prefix + R`       | respawn a dead pane (revive a closed dev-layout tool window)  |
 | `prefix + r`       | reload `tmux.conf`                                            |
 | `prefix + ?`       | searchable cheatsheet of these bindings                       |
+| `prefix + e`       | grab a path/URL/token off the screen into the command line    |
+| `prefix + F`       | fuzzy-search the scrollback and jump to the hit               |
+| `prefix + u`       | pick a URL from the pane and open it                          |
+| `prefix + @`       | promote this pane to a session of its own                     |
+| `prefix + <` / `>` | move this window left / right in the list                     |
+| `prefix + P`       | start/stop writing this pane to a log file                    |
+| `prefix + N`       | alert me when this window goes quiet                          |
+| `F12`              | OFF mode — all tmux keys off, for a tmux inside this one      |
 
 ### The session manager (`Alt-s`)
 
@@ -93,13 +101,26 @@ that menu again — it is a drag, not a click.
 
 ## The status bar
 
-**Catppuccin Latte**, on a white terminal. The bar paints no background of its own (`bg=terminal`),
-so it takes Ghostty's, and the accent — Latte `blue #1e66f5` — lives only in the pills.
+**Catppuccin**, on a white terminal. The bar paints no background of its own (`bg=terminal`), so it
+takes Ghostty's, and the accent — Latte `blue #1e66f5` — lives only in the pills.
 
-The whole palette is one block at the top of `tmux.conf` §3: the 26 Latte colours, then the roles
-that point at them (`@thm_accent`, `@thm_dim`, `@thm_urgent`…). `tmux.conf` reads them with
-`#{E:@thm_…}` and the scripts with `tmux display-message -p '#{E:@thm_…}'`, so **changing theme is
-that block and nothing else**.
+Every tab is **two chips**: the accent holds the index, the name sits on a neutral chip, and each
+cap takes the colour of the chip it terminates. That edge inside one object is what stops the
+accent reading as a slab — it is the shape Catppuccin itself uses. Inactive tabs get a quiet card
+instead of floating on the bar.
+
+All four flavours ship. `scripts/theme.sh` owns the palette, the semantic roles and the per-host
+tints; **switching is one option and a re-run**, from the `Alt-Space` palette or by hand:
+
+```tmux
+:set -g @thm_flavor mocha ; run-shell "~/.config/tmux/scripts/theme.sh"
+```
+
+The pill text is *measured*, not written down. Every pill is text-on-colour, and the right
+foreground flips both with the flavour and within it — white reads on Latte's blue (4.91:1) and not
+on Mocha's (2.10:1), and inside Latte it reads on blue but not on yellow (2.62:1). `theme.sh`
+computes each one, so a palette edit cannot silently produce an illegible pill. All 56 pairings
+across the four flavours measure ≥ 4.5:1.
 
 Three places deliberately depart from upstream `catppuccin/tmux`, all for legibility — which
 Catppuccin's own style guide asks for over fidelity. Pill text is `#ffffff`, not `crust`, because
@@ -108,14 +129,13 @@ Inactive pane borders use `overlay1`, not `overlay0`, which on white is 2.60:1 a
 3:1 UI threshold. And `message-style` is white on the accent rather than upstream's teal on
 `overlay0`, which is 1.44:1.
 
-- **left** — the session name in an accent pill, Latte `red` while the prefix is held. `ssh_<host>`
-  sessions get a colour of their own instead (`scripts/session-color.sh`, stable per host), so a
-  remote session never looks like a local one.
+- **left** — empty for a local session. An `ssh_<host>` session shows its **host** here instead, in
+  that host's own stable tint, so a remote session can never be mistaken for a local one.
 - **centre** — the window list, anchored with `status-justify absolute-centre` so the tabs do not
   slide when the session name changes length. Each window carries an icon for what is running in it.
 - **right** — the current mode (prefix / copy-mode / zoom / synchronized), then the numbered session
-  strip that `prefix + <digit>` jumps to. The session you are on appears there as its **number**
-  only — its name is already in the pill on the left.
+  strip that `prefix + <digit>` jumps to. The session you are on is the two-chip pill in it, and
+  clicking the strip opens the session manager.
 
 Nothing on the bar shells out — there is no `#()` anywhere, so a redraw never forks. The session
 strip is computed by `scripts/session-strip.sh` from the session hooks into a user option the bar
@@ -125,6 +145,26 @@ In copy mode (`prefix + [` or scroll up): `v` select, `y` / `Enter` / `Ctrl-C` /
 **without** leaving copy mode (the selection also reaches the system clipboard); `q` / `Esc` to exit.
 The `dev` tool windows (`agent · editor · git`) stay put when their app exits — the pane goes _dead_
 instead of the window closing, so `prefix + R` relaunches it (`term` stays a disposable shell).
+
+## Sessions survive a reboot
+
+The session hooks keep a roster at `${XDG_STATE_HOME:-~/.local/state}/tmux/roster` — each session's
+name, directory and a window signature. The first `t` after a boot replays it.
+
+It restores *which projects were open*, not their exact contents, and that is the whole design:
+these sessions are reproducible by construction, so a name and a path are enough. A session whose
+signature says it came from `tp` is rebuilt through `sessions/dev.conf`, so its four tool windows
+come back rather than a bare shell.
+
+**`ssh_*` sessions are saved but never auto-restored.** Recreating one arms the SSH shield's
+`default-command`, so every pane it opens dials out at once — a boot would fire N ssh connections
+at possibly-down hosts, maybe with N 2FA prompts, before you had typed anything. They are listed
+instead; `tssh <host>` is one keystroke.
+
+This is not tmux-resurrect and does not try to be: no pane geometry, no guessing at argv from `ps`,
+no whitelist. Nothing is polled either — tmux-continuum's timer drives its save from the status
+redraw, which needs `status-interval > 0` and an untouched `status-right`, and this config has
+neither.
 
 ## The SSH shield
 
