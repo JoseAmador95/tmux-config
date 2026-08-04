@@ -200,18 +200,28 @@ at all: they need `status-interval > 0` and `status-right`, which the session st
 
 ## The session manager (`Alt-s`)
 
-Two modes, like vim, because type-to-filter and single-letter actions cannot share a keyboard:
+Two modes, like vim, because type-to-filter and single-letter actions cannot share a keyboard.
+**It opens in insert**, so you can just start typing:
 
-| Mode                  | Keys                                                                                                                                                                |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **actions** (default) | `1`…`9` jump + switch · `j`/`k` move · `g`/`G` ends · `r` rename · `n` new · `x` kill · `s` classic `choose-tree` · `Enter` / double-click switch · `q`/`Esc` close |
-| **search** (`/`)      | type to filter · `Enter` switch · `Esc` back to the action keys                                                                                                     |
+| Mode                 | Keys |
+| -------------------- | ---- |
+| **insert** (on open) | type to filter · **`jj` or `kk`** for normal mode · `Enter` switch · `Ctrl-j`/`Ctrl-k` move · `Esc` → normal |
+| **normal**           | `1`…`9` jump + switch · `j`/`k` move · `g`/`G` ends · `r` rename · `n` new · `x` kill · `s` classic `choose-tree` · `i` or `/` back to typing · `q`/`Esc` close |
+
+`jj` and `kk` leave insert exactly the way they do in nvim. The destructive keys are **normal-mode
+only** on purpose — `x` must not be reachable while you are typing, which was the original complaint
+that gave this dialog its modes in the first place. `Esc` always means one level back:
+insert → normal, normal → close, so the reflex of pressing it to stop typing never closes the dialog.
 
 `r`, `n` and `x` open a prompt that **`Esc` cancels**; `x` confirms with the cursor parked on `no`.
-Leaving search clears the filter, so the digits always address the full list — in the same order as
+Leaving insert clears the filter, so the digits always address the full list — in the same order as
 `prefix + <digit>` and the numbers on the status bar, because all three read
 `scripts/session-order.sh`. That order is `main` first, then most recently used, so it changes as
 you move around; what never changes is that a given digit means the same session everywhere.
+
+**One difference from vim:** there is no `timeoutlen`. The second `j` switches mode however long you
+waited, so a query can never contain `jj` — a session whose name has a double `j` cannot be reached
+by *search*, only by `j`/`k` and the digits in normal mode.
 
 **Closing it with the mouse:** a left-click outside the popup does not close it, and cannot be made
 to. tmux's `popup_key_cb` returns "keep open" for out-of-bounds mouse events in every version from
