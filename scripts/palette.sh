@@ -22,7 +22,11 @@ items() {   # "tmux command<TAB>label" (printf recycles the format per pair)
     'copy-mode'                                                 'copy-mode (scroll/search)' \
     'clock-mode'                                                'clock' \
     'detach-client'                                            'detach' \
-    'source-file ~/.config/tmux/tmux.conf'                     'reload config'
+    'source-file ~/.config/tmux/tmux.conf'                     'reload config' \
+    'set -g @thm_flavor latte     \; run-shell "~/.config/tmux/scripts/theme.sh"'     'theme: latte (light)' \
+    'set -g @thm_flavor frappe    \; run-shell "~/.config/tmux/scripts/theme.sh"'     'theme: frappe' \
+    'set -g @thm_flavor macchiato \; run-shell "~/.config/tmux/scripts/theme.sh"'     'theme: macchiato' \
+    'set -g @thm_flavor mocha     \; run-shell "~/.config/tmux/scripts/theme.sh"'     'theme: mocha (dark)'
 }
 
 items | fzf $(fzf_style) \

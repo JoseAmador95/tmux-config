@@ -18,8 +18,15 @@ PANES
 COPY
   prefix y      copy the WHOLE scrollback          prefix Y  copy only the last output
   v / y         (copy-mode) select / copy          C-c    (copy-mode) copy
-  d / u         (copy-mode) half page down / up
+  d / u         (copy-mode) jump 10 lines down / up
+FIND / GRAB
+  prefix e      grab a path/URL/token off screen   prefix F  search scrollback, jump to hit
+  prefix u      pick a URL and open it             U / O     (copy-mode) prev URL / prev path
+WINDOWS & SESSIONS
+  prefix < / >  move this window left / right       prefix @  promote this pane to a session
+  prefix P      toggle logging this pane to a file  prefix N  alert when this window goes quiet
 GENERAL
   M-Space       command palette                    prefix :  command prompt (tmux)
   prefix ?      this help                          prefix r  reload config
+  F12           OFF mode (all tmux keys off)
 EOF
