@@ -34,8 +34,49 @@ unset -f _t_raise_nofile 2>/dev/null
 
 # t — attach or create the "main" session. Main command. `t` → "main"; `t foo` → "foo".
 # tmux has no session serialization, so there is nothing to disable.
+# ── restore the sessions that were open before a reboot ──────────────────────────────────
+# Fires only when there is NO tmux server at all — i.e. the first `t` after a boot. The roster is
+# written by scripts/session-save.sh from the session hooks; see that file for why this is ~20
+# lines and not a port of tmux-resurrect.
+#
+# ssh_* sessions are saved but deliberately NOT recreated. Replaying one arms the SSH shield's
+# per-session default-command, so every pane it opens dials out at once: a boot would fire N ssh
+# connections at hosts that may be down, possibly with N 2FA prompts, before you have typed
+# anything. They are listed instead — `tssh <host>` is one keystroke.
+#
+# The third roster field is a window-name signature, not a window list to rebuild: "agent editor
+# git term" means the session came from `tp`, so it is rebuilt through the same sessions/dev.conf
+# that built it originally rather than coming back as a bare shell.
+_t_restore() {
+  [ -n "${TMUX:-}" ] && return 0
+  tmux has-session 2>/dev/null && return 0
+  local roster="${XDG_STATE_HOME:-$HOME/.local/state}/tmux/roster"
+  [ -r "$roster" ] || return 0
+
+  local name dir wins remote=""
+  while IFS=$'\t' read -r name dir wins; do
+    [ -n "$name" ] || continue
+    case "$name" in
+      ssh_*) remote="$remote ${name#ssh_}"; continue ;;
+    esac
+    tmux has-session -t "=$name" 2>/dev/null && continue
+    [ -d "${dir:-}" ] || dir="$HOME"
+    case "$wins" in
+      "agent editor git term"*)
+        local SESS="$name" DIR="$dir"
+        . "$HOME/.config/tmux/sessions/dev.conf" ;;
+      *)
+        tmux new-session -d -s "$name" -c "$dir" ;;
+    esac
+  done < "$roster"
+
+  [ -n "$remote" ] && printf 'tmux: remote sessions not restored —%s (use: tssh <host>)\n' "$remote" >&2
+  return 0
+}
+
 t() {
   local s="${1:-main}"
+  _t_restore
   tmux has-session -t "=$s" 2>/dev/null || tmux new-session -d -s "$s"
   if [ -n "${TMUX:-}" ]; then tmux switch-client -t "=$s"; else tmux attach -t "=$s"; fi
 }
