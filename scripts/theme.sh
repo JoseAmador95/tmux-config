@@ -103,3 +103,12 @@ for n in rosewater flamingo pink mauve maroon peach yellow green teal sky sapphi
   tints="${tints}${tints:+ }${c}:$(best_ink "$c")"
 done
 tmux set -g @thm_ssh_tints "$tints"
+
+# --- plugin palettes -------------------------------------------------------------------------------
+# tmux-fuzzback takes its fzf colours as one static option string, which would freeze it to whatever
+# flavour was current when it was written — dark by default, wrong the moment you are on Latte.
+# Publishing it here instead keeps the rule this file exists to enforce: the palette lives in ONE
+# place. Re-running theme.sh is already how a flavour switch works, so fuzzback follows for free.
+# The roles are the same three fzf-style.sh uses for every other popup, so the popups match.
+tmux set -g @fuzzback-fzf-colors \
+  "fg+:$(best_ink "$C_blue"),bg+:${C_blue},prompt:${C_blue},pointer:${C_blue},header:${C_subtext0},border:${C_blue},query:${C_blue}"

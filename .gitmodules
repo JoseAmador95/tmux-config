@@ -11,9 +11,6 @@
 [submodule "plugins/tmux-fuzzback"]
 	path = plugins/tmux-fuzzback
 	url = https://github.com/roosta/tmux-fuzzback
-[submodule "plugins/tmux-sessionist"]
-	path = plugins/tmux-sessionist
-	url = https://github.com/tmux-plugins/tmux-sessionist
 [submodule "plugins/extrakto"]
 	path = plugins/extrakto
 	url = https://github.com/laktak/extrakto
