@@ -9,9 +9,10 @@ cat <<'EOF' | fzf $(fzf_style) --info=inline --no-sort --prompt 'keys ' \
 NAVIGATION
   M-h/j/k/l     move focus between panes (or nvim splits)
   M-n           split (Zellij-like, longer axis)  M-t   new window in the cwd
-  M-1..9        go to window N                    M-Left / M-Right  previous / next window
+  M-1..9        go to window N                    M-; / M-'   previous / next window
   M-, / M-.     previous / next session           M-s   session manager (popup)
   prefix Tab    last session                      prefix 1..9  go to the N-th session
+  main is always 1; the rest are ordered by most recent use, so the digits move
   click the session strip on the right to open the session manager too
 PANES
   prefix H/J/K/L   resize                         prefix z  zoom (default)

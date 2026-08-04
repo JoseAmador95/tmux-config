@@ -36,8 +36,12 @@ tmux -f /dev/null -L "$VAN"  new-session -d 2>/dev/null || { echo "check-docs: c
 tmux -f tmux.conf -L "$SOCK" new-session -d 2>/dev/null || { echo "check-docs: tmux.conf failed to load"; exit 1; }
 
 keys() {   # keys() <socket> <table> -> one key per line
+  # list-keys QUOTES a key that needs it, so `bind -n "M-;"` comes back as the five characters
+  # "M-;" — quotes included. Strip them, or every quoted key reports as undocumented no matter what
+  # the docs say. (Found by this script the first time a quoted key was added.)
   tmux -L "$1" list-keys -T "$2" 2>/dev/null |
-    awk -v t="$2" '{for (i=1;i<=NF;i++) if ($i==t) { print $(i+1); break }}' | sort -u
+    awk -v t="$2" '{for (i=1;i<=NF;i++) if ($i==t) { k=$(i+1); gsub(/^"|"$/,"",k); print k; break }}' |
+    sort -u
 }
 
 # Expand the grouped spellings the docs use into one token per line, so `Alt-h/j/k/l` matches a

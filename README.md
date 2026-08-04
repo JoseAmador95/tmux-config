@@ -98,13 +98,19 @@ fetched.
 | `prefix + 1`…`9`  | jump to the N-th session in the strip              | config |
 | `prefix + @`      | promote this pane to a session of its own          | config |
 
+**The digits follow the strip, and the strip moves.** `main` is always `1`; every other session is
+ordered by how recently you were in it, so `prefix + 2` is effectively an alt-tab between the two
+you actually use. A digit is a position on the bar you are looking at, not a name you can memorise.
+`scripts/session-order.sh` is the single definition of that order — the bar, the digits and the
+`Alt-s` popup all read it, which is what keeps them agreeing.
+
 ### Windows
 
 | Key                | Action                               | Owner  |
 | ------------------ | ------------------------------------ | ------ |
 | `Alt-t`            | new window, in the current dir       | config |
 | `Alt-1`…`Alt-9`    | select window N                      | config |
-| `Alt-←` / `Alt-→`  | previous / next window               | config |
+| `Alt-;` / `Alt-'`  | previous / next window               | config |
 | `prefix + <` / `>` | move this window left / right        | config |
 | `prefix + N`       | alert me when this window goes quiet | config |
 
@@ -202,8 +208,10 @@ Two modes, like vim, because type-to-filter and single-letter actions cannot sha
 | **search** (`/`)      | type to filter · `Enter` switch · `Esc` back to the action keys                                                                                                     |
 
 `r`, `n` and `x` open a prompt that **`Esc` cancels**; `x` confirms with the cursor parked on `no`.
-Leaving search clears the filter, so the digits always address the full list — the same order as
-`prefix + <digit>` and the numbers on the status bar.
+Leaving search clears the filter, so the digits always address the full list — in the same order as
+`prefix + <digit>` and the numbers on the status bar, because all three read
+`scripts/session-order.sh`. That order is `main` first, then most recently used, so it changes as
+you move around; what never changes is that a given digit means the same session everywhere.
 
 **Closing it with the mouse:** a left-click outside the popup does not close it, and cannot be made
 to. tmux's `popup_key_cb` returns "keep open" for out-of-bounds mouse events in every version from
