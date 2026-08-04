@@ -116,7 +116,7 @@ tints; **switching is one option and a re-run**, from the `Alt-Space` palette or
 :set -g @thm_flavor mocha ; run-shell "~/.config/tmux/scripts/theme.sh"
 ```
 
-The pill text is *measured*, not written down. Every pill is text-on-colour, and the right
+The pill text is _measured_, not written down. Every pill is text-on-colour, and the right
 foreground flips both with the flavour and within it — white reads on Latte's blue (4.91:1) and not
 on Mocha's (2.10:1), and inside Latte it reads on blue but not on yellow (2.62:1). `theme.sh`
 computes each one, so a palette edit cannot silently produce an illegible pill. All 56 pairings
@@ -124,7 +124,7 @@ across the four flavours measure ≥ 4.5:1.
 
 Three places deliberately depart from upstream `catppuccin/tmux`, all for legibility — which
 Catppuccin's own style guide asks for over fidelity. Pill text is `#ffffff`, not `crust`, because
-crust on an accent clears 4.5:1 on *no* Latte accent (upstream's own default mauve pill is 4.09:1).
+crust on an accent clears 4.5:1 on _no_ Latte accent (upstream's own default mauve pill is 4.09:1).
 Inactive pane borders use `overlay1`, not `overlay0`, which on white is 2.60:1 and fails even the
 3:1 UI threshold. And `message-style` is white on the accent rather than upstream's teal on
 `overlay0`, which is 1.44:1.
@@ -137,9 +137,13 @@ Inactive pane borders use `overlay1`, not `overlay0`, which on white is 2.60:1 a
   strip that `prefix + <digit>` jumps to. The session you are on is the two-chip pill in it, and
   clicking the strip opens the session manager.
 
-Nothing on the bar shells out — there is no `#()` anywhere, so a redraw never forks. The session
-strip is computed by `scripts/session-strip.sh` from the session hooks into a user option the bar
-reads for free.
+Nothing on the bar shells out — there is no `#()` anywhere. The reason is not the one you would
+guess, so it is worth stating precisely: tmux caches a `#()` and re-runs it on the `status-interval`
+timer, not on every redraw. Measured with 6 windows, at `status-interval 5`, that is 6 forks every
+5s; ordinary redraws reuse the cache. But this config sets **`status-interval 0`**, so a `#()` would
+run **once** and then show the same value for the life of the client. The problem with a `#()` here
+is staleness, not cost — which is exactly why every status module (battery, cpu, gitmux) forces the
+timer on, and why none of them fit a bar whose `status-right` is the session strip.
 
 In copy mode (`prefix + [` or scroll up): `v` select, `y` / `Enter` / `Ctrl-C` / mouse-drag-release copy
 **without** leaving copy mode (the selection also reaches the system clipboard); `q` / `Esc` to exit.
@@ -151,7 +155,7 @@ instead of the window closing, so `prefix + R` relaunches it (`term` stays a dis
 The session hooks keep a roster at `${XDG_STATE_HOME:-~/.local/state}/tmux/roster` — each session's
 name, directory and a window signature. The first `t` after a boot replays it.
 
-It restores *which projects were open*, not their exact contents, and that is the whole design:
+It restores _which projects were open_, not their exact contents, and that is the whole design:
 these sessions are reproducible by construction, so a name and a path are enough. A session whose
 signature says it came from `tp` is rebuilt through `sessions/dev.conf`, so its four tool windows
 come back rather than a bare shell.
