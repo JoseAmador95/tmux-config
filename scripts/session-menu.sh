@@ -1,8 +1,8 @@
 #!/bin/sh
-# session-menu.sh — fzf-popup session manager (bound to M-s and to a click on the status-left
-# session pill). Runs inside `display-popup -E`.
+# session-menu.sh — fzf-popup session manager (bound to M-s and to a click on the session strip
+# at the right end of the bar). Runs inside `display-popup -E`.
 #
-# TWO MODES, like vim. ACTION mode (the default, `fzf --disabled`) has type-to-filter OFF, so every
+# TWO MODES, like vim. ACTION mode (the default, `fzf --no-input`) has NO input line at all, so every
 # printable key is a binding: 1..9 jump+switch, j/k (and arrows) move, g/G ends, r rename, n new,
 # x kill, s classic tree, Enter/double-click switch, q/Esc quit. `/` enters SEARCH mode, where the
 # filter is on and letters type; Esc leaves it, clears the query and restores the action keys.
@@ -12,6 +12,13 @@
 # would still rename instead of typing an "r" -- so entering search must unbind() every action key
 # and leaving it must rebind() them. That unbind/rebind pair is junegunn's own documented "Vim-like
 # mode switch" (fzf CHANGELOG 0.59.0).
+#
+# WHY --no-input AND NOT --disabled, which is what this used to be. --disabled turns the MATCHER
+# off but keeps the input line, so a key that happens not to be bound -- b, e, t, h... -- is still
+# swallowed into the query and echoed in the prompt. The list never filtered, but the prompt read
+# "session hello" while you typed, which looks exactly like a search that is not working.
+# --no-input removes the input line outright: in action mode an unbound key now does nothing and
+# shows nothing. `/` calls show-input to bring it back, Esc calls hide-input to put it away.
 #
 # WHY fzf (not choose-tree/display-menu): choose-tree's keys are hardcoded (r=reverse-sort) and
 # display-menu has no vi navigation; only fzf gives numbers + vim-motions + literal action keys
@@ -71,9 +78,8 @@ esac
 # Every key that means "do something" in action mode. `/` is in the list too: once search is on it
 # must type a slash like any other character. Kept as one comma-separated string because that is
 # exactly the argument shape unbind()/rebind() want.
-# The `/` bind also clear-query's: keys that are NOT actions (b, e, t…) are still swallowed into
-# fzf's invisible query buffer in action mode, so without it the filter would start out already
-# narrowed by whatever you had mistyped.
+# The `/` bind still clear-query's even though --no-input means nothing can land in the query any
+# more: it costs nothing and it keeps the leftover from a previous search out of the next one.
 ACTIONS='j,k,g,G,r,n,x,s,q,1,2,3,4,5,6,7,8,9,/'
 
 HDR_ACTION='/ search · j/k move · 1-9 switch · r rename · n new · x kill · s tree · q quit · right-drag outside for Close'
@@ -88,7 +94,7 @@ HDR_SEARCH='type to filter · Enter switch · Esc back to the action keys'
 # without it Esc would drop you back into action mode still looking at a filtered list, with the
 # digit keys pointing at the wrong sessions. Rebuilding the list is also the cheapest way to pick
 # up sessions created or killed while you were searching.
-BACK="clear-query+disable-search+rebind(${ACTIONS})+change-prompt(session )+change-header(${HDR_ACTION})+reload(${SELF} --list)"
+BACK="clear-query+disable-search+hide-input+rebind(${ACTIONS})+change-prompt(session )+change-header(${HDR_ACTION})+reload(${SELF} --list)"
 ESC="esc:transform:case \"\${FZF_INPUT_STATE:-}\" in enabled) printf '%s' '${BACK}' ;; *) printf '%s' 'abort' ;; esac"
 
 # Switching is the same action from three inputs, so it is written once.
@@ -99,14 +105,14 @@ set -- $(fzf_style) \
   --no-sort --info=hidden --cycle --pointer '›' \
   --delimiter '\t' --with-nth 2 --prompt 'session ' \
   --header "${HDR_ACTION}" \
-  --disabled \
+  --no-input \
   --bind 'ctrl-j:down,ctrl-k:up,ctrl-d:half-page-down,ctrl-u:half-page-up' \
   --bind 'j:down,k:up,g:first,G:last' \
   --bind "enter:${SWITCH}" \
   --bind "double-click:${SWITCH}" \
   --bind 's:become(tmux choose-tree -Zs)' \
   --bind 'q:abort' \
-  --bind "/:clear-query+enable-search+unbind(${ACTIONS})+change-prompt(/ )+change-header(${HDR_SEARCH})" \
+  --bind "/:clear-query+show-input+enable-search+unbind(${ACTIONS})+change-prompt(/ )+change-header(${HDR_SEARCH})" \
   --bind "${ESC}" \
   --bind "r:execute(${SELF} --rename {1})+reload(${SELF} --list)" \
   --bind "n:execute(${SELF} --new)+reload(${SELF} --list)" \
