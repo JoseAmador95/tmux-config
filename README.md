@@ -2,84 +2,197 @@
 
 Personal tmux configuration, ported from [`zellij-config`](https://github.com/JoseAmador95/zellij-config).
 
-Single terminal window, single tab: you switch between multiplexer **sessions** — local
-per-project sessions and sessions dedicated to SSH hosts — instead of juggling terminal tabs.
+One terminal window, one tab. You switch between multiplexer **sessions** — local per-project ones
+and ones dedicated to SSH hosts — instead of juggling terminal tabs.
 
-## Why the move from Zellij
+---
 
-Two requirements were structurally impossible in Zellij and are native in tmux:
-
-- **Never mix local and SSH.** In a Zellij `ssh_*` session a new _tab_ entered the remote host but a
-  pane _split_ opened a **local** shell, because the `zellij-switch` plugin cannot set `default_shell`
-  per session. In tmux, `default-command` is a **session option**: it applies to `new-window` **and**
-  `split-window`, and it does not leak to other sessions.
-- **Extend the personal config with a work config.** Zellij has no `include`. tmux composes configs
-  with `source-file -q`.
-
-## Install
+## Quick start
 
 ```sh
-git clone <your-fork> ~/.config/tmux
+git clone --recurse-submodules <your-fork> ~/.config/tmux
 ~/.config/tmux/bootstrap.sh
+exec $SHELL          # or `source` your rc
+t                    # attach/create the "main" session
 ```
 
-`bootstrap.sh` is idempotent and downloads nothing. It checks `tmux >= 3.4`, marks the scripts
-executable, and wires `source ~/.config/tmux/shell/functions.sh` into your rc (`~/.config/sh/rc.sh`,
-else `~/.zshrc`/`~/.bashrc`) inside a `# >>> tmux-functions >>>` block. tmux auto-loads
-`~/.config/tmux/tmux.conf`, so the config itself needs no wiring. It coexists with an existing
-Zellij install (separate servers).
+`--recurse-submodules` matters: the plugins live in `plugins/` as submodules. If you forgot it,
+`bootstrap.sh` fetches them anyway.
 
-Requires **tmux ≥ 3.4** and **`fzf` ≥ 0.59** — `fzf` is not optional: `Alt-s`, `Alt-Space` and
-`prefix + ?` are all fzf popups and there is no fallback. Below 0.59 everything still works except
-that `Esc` leaves the session popup's `/` search by closing the popup instead of returning to the
-action keys.
+The repo must end up at **`~/.config/tmux`** — that is what tmux auto-loads, and nothing wires it
+up for you. `bootstrap.sh` warns if it is somewhere else.
 
-The status bar uses **Nerd Font** glyphs (pill caps and one icon per window) and therefore needs a
-**UTF-8 locale**: with `LC_CTYPE=POSIX` tmux silently drops those characters and the pills lose
-their rounded ends.
+**Prerequisites**, each of which has cost a debugging session:
 
-## Usage
+| Need               | Why                                                                                                                                                                                |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **tmux ≥ 3.4**     | the floor. `bootstrap.sh` refuses below it. Automatic light/dark needs **3.6** (optional).                                                                                         |
+| **`fzf` ≥ 0.59**   | not optional — `Alt-s`, `Alt-Space`, `prefix + ?` and `prefix + e` are fzf popups, with no fallback. Below 0.59, `Esc` leaves the session popup's `/` search by closing the popup. |
+| **A Nerd Font**    | the bar's pill caps and per-window icons.                                                                                                                                          |
+| **A UTF-8 locale** | with `LC_CTYPE=POSIX` tmux silently drops the Nerd Font glyphs and the pills lose their rounded ends.                                                                              |
+| **Python 3.6+**    | `extrakto` (`prefix + e`) and `tmux-easy-motion`.                                                                                                                                  |
+
+`bootstrap.sh` is idempotent — re-run it any time. It checks the versions, fetches the submodules,
+marks the scripts executable and wires `shell/functions.sh` into your rc inside a
+`# >>> tmux-functions >>>` block. It coexists with an existing Zellij install (separate servers).
+
+**What you should see:** a status bar at the **top**, blank on the left, a centred window list where
+each tab is a two-tone pill, and on the right a numbered strip of your open sessions.
+
+---
+
+## The model
+
+There is one terminal window and one tab in it. Everything else is a tmux **session**, and sessions
+are **named** — the names drive the numbered strip on the bar, `prefix + <digit>`, and the SSH
+shield. You move between them with `Alt-,` / `Alt-.` or the `Alt-s` popup.
 
 | Command          | What it does                                                                                                          |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------- |
 | `t` / `t <name>` | attach/create the `main` session (or `<name>`)                                                                        |
 | `tp [dir]`       | session with the `dev` layout (`agent · editor · git · term`), rooted in `dir` (default: cwd). `tcwd` is a kept alias |
-| `tssh <host>`    | dedicated SSH session `ssh_<host>`; every pane/window enters the host                                                 |
+| `tssh <host>`    | dedicated SSH session `ssh_<host>`; every pane and window enters the host                                             |
 | `tcopy`          | copy the current pane's full scrollback to the clipboard                                                              |
-| `agent`          | run this host's AI agent (see below)                                                                                  |
+| `agent`          | run this host's AI agent                                                                                              |
 
 The `dev` layout's **agent** window resolves its command from `$TMUX_AGENT`, else the first useful
 line of `~/.config/tmux/agent.local`, else a shell with a warning. Per host:
 `export TMUX_AGENT=codex` or `echo codex > ~/.config/tmux/agent.local`.
 
-### Keys (prefix is `Ctrl-a`, or `Ctrl-Space` as a secondary leader)
+---
 
-| Key                | Action                                                        |
-| ------------------ | ------------------------------------------------------------- |
-| `Alt-h/j/k/l`      | move between panes (forwarded to nvim inside a vim pane)      |
-| `Alt-n` / `Alt-t`  | split pane / new window                                       |
-| `Alt-1`…`Alt-9`    | select window                                                 |
-| `Alt-←` / `Alt-→`  | previous / next window (tab)                                  |
-| `Alt-,` / `Alt-.`  | previous / next session                                       |
-| `Alt-s`            | session manager popup (below); clicking the session strip too |
-| `Alt-Space`        | command palette                                               |
-| `Alt-v`            | enter copy mode                                               |
-| `prefix + Tab`     | last session (toggle)                                         |
-| `prefix + 1`…`9`   | jump to the N-th session in the bar                           |
-| `prefix + H/J/K/L` | resize pane (repeatable)                                      |
-| `prefix + R`       | respawn a dead pane (revive a closed dev-layout tool window)  |
-| `prefix + r`       | reload `tmux.conf`                                            |
-| `prefix + ?`       | searchable cheatsheet of these bindings                       |
-| `prefix + e`       | grab a path/URL/token off the screen into the command line    |
-| `prefix + F`       | fuzzy-search the scrollback and jump to the hit               |
-| `prefix + u`       | pick a URL from the pane and open it                          |
-| `prefix + @`       | promote this pane to a session of its own                     |
-| `prefix + <` / `>` | move this window left / right in the list                     |
-| `prefix + P`       | start/stop writing this pane to a log file                    |
-| `prefix + N`       | alert me when this window goes quiet                          |
-| `F12`              | OFF mode — all tmux keys off, for a tmux inside this one      |
+## Features
 
-### The session manager (`Alt-s`)
+- **A status bar that never shells out** — no `#()` anywhere, so nothing on it can hang or go
+  stale. [Details](#the-status-bar).
+- **A two-mode session manager** on `Alt-s`, because type-to-filter and single-letter actions
+  cannot share a keyboard. [Details](#the-session-manager-alt-s).
+- **Sessions survive a reboot** — a roster of names and paths, replayed by the first `t`.
+  [Details](#sessions-survive-a-reboot).
+- **The SSH shield** — a pane in an `ssh_<host>` session cannot silently fall back to a local
+  shell. [Details](#the-ssh-shield).
+- **Copy mode that does not fight you** — copying never leaves copy mode and never snaps to the
+  bottom. [Details](#copy-mode).
+- **Five plugins**, vendored as git submodules and pinned by SHA. [Details](#plugins).
+- **Four Catppuccin flavours**, one option to switch, and on tmux 3.6+ it follows your terminal's
+  light/dark theme by itself.
+
+---
+
+## Keys
+
+Prefix is `Ctrl-a`, with `Ctrl-Space` as a secondary leader. `prefix + ?` shows this same list in a
+searchable popup (`scripts/keys.sh`).
+
+Only what this config defines is listed — tmux's own defaults still work. The **owner** column says
+what to blame when a key misbehaves; a key owned by a plugin does nothing if that plugin was not
+fetched.
+
+### Sessions
+
+| Key               | Action                                             | Owner  |
+| ----------------- | -------------------------------------------------- | ------ |
+| `Alt-s`           | session manager popup (or click the session strip) | config |
+| `Alt-,` / `Alt-.` | previous / next session                            | config |
+| `prefix + Tab`    | last session (toggle)                              | config |
+| `prefix + 1`…`9`  | jump to the N-th session in the strip              | config |
+| `prefix + @`      | promote this pane to a session of its own          | config |
+
+### Windows
+
+| Key                | Action                               | Owner  |
+| ------------------ | ------------------------------------ | ------ |
+| `Alt-t`            | new window, in the current dir       | config |
+| `Alt-1`…`Alt-9`    | select window N                      | config |
+| `Alt-←` / `Alt-→`  | previous / next window               | config |
+| `prefix + <` / `>` | move this window left / right        | config |
+| `prefix + N`       | alert me when this window goes quiet | config |
+
+### Panes
+
+| Key                | Action                                           | Owner  |
+| ------------------ | ------------------------------------------------ | ------ |
+| `Alt-h/j/k/l`      | move focus (forwarded to nvim inside a vim pane) | config |
+| `Alt-n`            | split the longer axis (Zellij-like)              | config |
+| `prefix + H/J/K/L` | resize (repeatable)                              | config |
+| `prefix + R`       | respawn a dead pane                              | config |
+| `prefix + P`       | start/stop logging this pane to a file           | config |
+
+### Copy & clipboard
+
+| Key                                   | Action                                       | Owner     |
+| ------------------------------------- | -------------------------------------------- | --------- |
+| `Alt-v`                               | enter copy mode                              | config    |
+| `v` / `y`                             | select / copy, **without leaving copy mode** | config    |
+| `Enter`, `Ctrl-C`, mouse-drag-release | copy, same rule                              | config    |
+| `d` / `u`                             | jump 10 lines down / up (vim's `10j`/`10k`)  | config    |
+| `prefix + y`                          | copy the whole scrollback                    | config    |
+| `prefix + Y`                          | copy only the last command's output          | config    |
+| `o` / `C-o`                           | open the selection / open it in `$EDITOR`    | tmux-open |
+
+### Find & grab
+
+| Key          | Action                                                    | Owner            |
+| ------------ | --------------------------------------------------------- | ---------------- |
+| `prefix + e` | grab a path/URL/hash off the screen into the command line | extrakto         |
+| `prefix + f` | label every match on screen; press its letter to copy     | tmux-fingers     |
+| `prefix + F` | fuzzy-search the scrollback and jump to the hit           | tmux-fuzzback    |
+| `prefix + u` | pick a URL from the pane and open it                      | config           |
+| `U` / `O`    | (copy mode) jump back to the previous URL / file path     | config           |
+| `s`          | (copy mode) easy-motion jump                              | tmux-easy-motion |
+
+### General
+
+| Key          | Action                                           | Owner  |
+| ------------ | ------------------------------------------------ | ------ |
+| `Alt-Space`  | command palette                                  | config |
+| `prefix + ?` | this cheatsheet, searchable                      | config |
+| `prefix + r` | reload `tmux.conf`                               | config |
+| `F12`        | OFF mode — every tmux key off, for a nested tmux | config |
+
+`prefix + f` is the only key here that replaces a tmux default (`find-window`). Everything else was
+either free or already this config's.
+
+---
+
+## Plugins
+
+Five, as git submodules under `plugins/`. **There is no plugin manager.** The submodule SHA is the
+pin, it shows up in the diff, and `git clone --recurse-submodules` reproduces the exact set. TPM was
+evaluated and rejected: its `#tag` pin is honoured on install only, changing one is a no-op,
+`prefix + U` then fails on the resulting detached HEAD, and its own last substantive commit was in
+February 2023 — while `brew install tpm`, the tidiest way to install it, is unavailable on Linux.
+
+| Plugin             | What it gives you                                   | Needs               |
+| ------------------ | --------------------------------------------------- | ------------------- |
+| `tmux-fingers`     | hint letters painted over the screen (`prefix + f`) | a binary, see below |
+| `tmux-fuzzback`    | scrollback search + jump (`prefix + F`)             | fzf                 |
+| `extrakto`         | grab tokens off the screen (`prefix + e`)           | Python 3.6+, fzf    |
+| `tmux-open`        | open the selection from copy mode (`o`)             | `open` / `xdg-open` |
+| `tmux-easy-motion` | easy-motion jumps in copy mode (`s`)                | Python              |
+
+Updating one is deliberate: `git submodule update --remote plugins/<name>`, then a commit that says
+what moved.
+
+**`tmux-fingers` is a compiled binary**, and prebuilt ones exist for **Linux x86_64 and macOS arm64
+only**. Anywhere else, build it with Crystal or `brew install morantron/tmux-fingers/tmux-fingers`;
+until then `prefix + f` does nothing and everything else is unaffected. `bootstrap.sh` fetches it,
+and `tmux.conf` refuses to load the plugin until the binary exists — its own loader would otherwise
+fire a network installer in the background _every time the config is sourced_.
+
+Three replaced hand-written code: `fuzzback.sh` and `grab.sh` were reimplementations of
+`tmux-fuzzback` and `extrakto` and are gone. **`tmux-sessionist` was tried and rejected** — its
+`promote_pane` creates _unnamed_ sessions, and it silently stole `prefix + C-Space`, the secondary
+leader, because its promote-window default `C-@` is the same keystroke. `scripts/promote.sh` stays.
+
+What deliberately stays hand-written: the theme (`catppuccin/tmux` measures 3/15 contrast segments
+passing against our 14/14, and it opens by _unsetting_ the whole `@thm_*` namespace), the session
+manager, and session persistence. Status modules — battery, cpu, gitmux, clima — cannot work here
+at all: they need `status-interval > 0` and `status-right`, which the session strip owns.
+
+---
+
+## The session manager (`Alt-s`)
 
 Two modes, like vim, because type-to-filter and single-letter actions cannot share a keyboard:
 
@@ -99,6 +212,8 @@ Use `q` / `Esc`, or the mouse gesture tmux does offer: **right-press outside, dr
 release** (tmux's own popup menu, ≥ 3.3). A right click-and-release in place only opens and closes
 that menu again — it is a drag, not a click.
 
+---
+
 ## The status bar
 
 **Catppuccin**, on a white terminal. The bar paints no background of its own (`bg=terminal`), so it
@@ -109,12 +224,29 @@ cap takes the colour of the chip it terminates. That edge inside one object is w
 accent reading as a slab — it is the shape Catppuccin itself uses. Inactive tabs get a quiet card
 instead of floating on the bar.
 
+- **left** — empty for a local session. An `ssh_<host>` session shows its **host** here instead, in
+  that host's own stable tint, so a remote session can never be mistaken for a local one.
+- **centre** — the window list, anchored with `status-justify absolute-centre` so the tabs do not
+  slide when the session name changes length. Each window carries an icon for what is running in it.
+- **right** — the current mode (prefix / copy-mode / zoom / synchronized), then the numbered session
+  strip that `prefix + <digit>` jumps to. The session you are on is the two-chip pill in it, and
+  clicking the strip opens the session manager.
+
+### Flavours, and following the system theme
+
 All four flavours ship. `scripts/theme.sh` owns the palette, the semantic roles and the per-host
 tints; **switching is one option and a re-run**, from the `Alt-Space` palette or by hand:
 
 ```tmux
 :set -g @thm_flavor mocha ; run-shell "~/.config/tmux/scripts/theme.sh"
 ```
+
+On **tmux ≥ 3.6** it does that by itself. tmux 3.6 added mode 2031, so it asks the terminal which
+theme it is on and re-asks when the OS flips; the `client-light-theme` / `client-dark-theme` hooks
+switch the flavour to match. This is what `tmux-dark-notify` exists to do, minus the plugin and the
+daemon. On older tmux the block is skipped and you switch by hand.
+
+### Contrast
 
 The pill text is _measured_, not written down. Every pill is text-on-colour, and the right
 foreground flips both with the flavour and within it — white reads on Latte's blue (4.91:1) and not
@@ -129,26 +261,30 @@ Inactive pane borders use `overlay1`, not `overlay0`, which on white is 2.60:1 a
 3:1 UI threshold. And `message-style` is white on the accent rather than upstream's teal on
 `overlay0`, which is 1.44:1.
 
-- **left** — empty for a local session. An `ssh_<host>` session shows its **host** here instead, in
-  that host's own stable tint, so a remote session can never be mistaken for a local one.
-- **centre** — the window list, anchored with `status-justify absolute-centre` so the tabs do not
-  slide when the session name changes length. Each window carries an icon for what is running in it.
-- **right** — the current mode (prefix / copy-mode / zoom / synchronized), then the numbered session
-  strip that `prefix + <digit>` jumps to. The session you are on is the two-chip pill in it, and
-  clicking the strip opens the session manager.
+### Why nothing on the bar shells out
 
-Nothing on the bar shells out — there is no `#()` anywhere. The reason is not the one you would
-guess, so it is worth stating precisely: tmux caches a `#()` and re-runs it on the `status-interval`
-timer, not on every redraw. Measured with 6 windows, at `status-interval 5`, that is 6 forks every
-5s; ordinary redraws reuse the cache. But this config sets **`status-interval 0`**, so a `#()` would
-run **once** and then show the same value for the life of the client. The problem with a `#()` here
-is staleness, not cost — which is exactly why every status module (battery, cpu, gitmux) forces the
-timer on, and why none of them fit a bar whose `status-right` is the session strip.
+There is no `#()` anywhere, and the reason is not the one you would guess. tmux caches a `#()` and
+re-runs it on the **`status-interval` timer**, not on every redraw. Measured with 6 windows at
+`status-interval 5`: 6 forks every 5s, while ordinary redraws reuse the cache. But this config sets
+**`status-interval 0`**, so a `#()` would run **once** and then show that value for the life of the
+client. The problem with a `#()` here is staleness, not cost — which is exactly why every status
+module forces the timer on, and why none of them fit a bar whose `status-right` is the session strip.
 
-In copy mode (`prefix + [` or scroll up): `v` select, `y` / `Enter` / `Ctrl-C` / mouse-drag-release copy
-**without** leaving copy mode (the selection also reaches the system clipboard); `q` / `Esc` to exit.
+---
+
+## Copy mode
+
+`prefix + [`, `Alt-v`, or scroll up. `v` selects; `y` / `Enter` / `Ctrl-C` / mouse-drag-release copy
+**without** leaving copy mode, and the selection also reaches the system clipboard. `q` / `Esc` exits.
+
+`d` / `u` jump ten lines, like vim's `10j` / `10k` — deliberately not half a page, which `C-d` /
+`C-u` already do. They exist because overshooting the bottom with `C-d` sends the extra keypress
+through as EOF and closes the shell, while `d` / `u` never leave copy mode.
+
 The `dev` tool windows (`agent · editor · git`) stay put when their app exits — the pane goes _dead_
 instead of the window closing, so `prefix + R` relaunches it (`term` stays a disposable shell).
+
+---
 
 ## Sessions survive a reboot
 
@@ -170,6 +306,8 @@ no whitelist. Nothing is polled either — tmux-continuum's timer drives its sav
 redraw, which needs `status-interval > 0` and an untouched `status-right`, and this config has
 neither.
 
+---
+
 ## The SSH shield
 
 Two layers guarantee that a pane in an `ssh_<host>` session can never silently fall back to a local
@@ -188,11 +326,14 @@ SSHes.
 
 - An explicit command wins over `default-command`: `split-window htop` runs `htop` locally.
 - `join-pane` / `move-pane` bring a pane whose process is **already running** from another session.
-- Never set `default-command` with `set -g` — it would make every local session try to SSH.
+- Never set `default-command` with `set -g` — it would make every local session try to SSH. This is
+  also why `tmux-sensible` is not installed: on macOS it does exactly that.
+
+---
 
 ## Work / per-machine config
 
-At the end of `tmux.conf`:
+At the end of `tmux.conf`, after the plugins, so these override everything:
 
 ```tmux
 source-file -q ~/.config/tmux-work/work.conf   # private (company) repo, cloned separately
@@ -201,6 +342,27 @@ source-file -q ~/.config/tmux/local.conf       # per-machine, gitignored
 
 `-q` is silent when the file is absent. The work layer may override global options, styles, and add
 its own bindings; use `%if`/`%elif`/`%endif` for host/OS conditionals (parse-time, no subshell).
+
+---
+
+## Why the move from Zellij
+
+Two requirements were structurally impossible in Zellij and are native in tmux:
+
+- **Never mix local and SSH.** In a Zellij `ssh_*` session a new _tab_ entered the remote host but a
+  pane _split_ opened a **local** shell, because the `zellij-switch` plugin cannot set `default_shell`
+  per session. In tmux, `default-command` is a **session option**: it applies to `new-window` **and**
+  `split-window`, and it does not leak to other sessions.
+- **Extend the personal config with a work config.** Zellij has no `include`. tmux composes configs
+  with `source-file -q`.
+
+### What is lost vs. Zellij
+
+Declarative nested layouts; session persistence across a **reboot** (sessions still survive closing
+the terminal and SSH drops); rounded pane-frame corners; and — inside nvim — Kitty-graphics previews.
+Accepted trade-offs.
+
+---
 
 ## Neovim interplay
 
@@ -212,14 +374,11 @@ its own bindings; use `%if`/`%elif`/`%endif` for host/OS conditionals (parse-tim
 - Known regressions under tmux: nvim's OSC 11 light/dark auto-detection may need a pin in
   `~/.nvim-local.lua`; Kitty-graphics image/diagram previews do not survive tmux reliably.
 
-## What is lost vs. Zellij
-
-Declarative nested layouts; session persistence across a **reboot** (sessions still survive closing
-the terminal and SSH drops); rounded pane-frame corners; and — inside nvim — Kitty-graphics previews.
-Accepted trade-offs.
+---
 
 ## Development
 
 POSIX `sh` with `set -u`, `sh -n` clean; Conventional Commits in English; see `AGENTS.md`. Never
 push to `main` without testing the phase on the target machine. Test on an isolated socket
-(`tmux -L smoke`), never the running server.
+(`tmux -L smoke`), never the running server — and use a **fresh socket name each time**, because
+reusing one straight after `kill-server` races and looks like a config error.
