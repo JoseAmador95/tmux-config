@@ -27,9 +27,15 @@ thm() {
   [ -n "$v" ] || v="$2"
   printf '%s' "$v"
 }
-ACCENT=$(thm accent '#1e66f5')
-INK=$(thm    ink    '#ffffff')
-DIM=$(thm    dim    '#6c6f85')
+DIM=$(thm  dim  '#6c6f85')
+CHIP=$(thm chip '#ccd0da')   # the neutral half of the current-session pill
+TEXT=$(thm text '#4c4f69')
+# The COLOURED half is the session's own @pill / @pill_ink, not the global accent: that is what
+# makes an ssh_<host> session keep its per-host tint here as well as in the left pill.
+PILL=$(tmux display-message -p '#{@pill}' 2>/dev/null) || PILL=''
+[ -n "$PILL" ] || PILL='#1e66f5'
+PINK=$(tmux display-message -p '#{@pill_ink}' 2>/dev/null) || PINK=''
+[ -n "$PINK" ] || PINK='#ffffff'
 
 # Which session to mark. It has to come from the ATTACHED CLIENT, not from `#S`: this script runs
 # from the session-created hook too, and there "#S" is the session that was just created — which
@@ -52,11 +58,11 @@ strip=$(
       [ "$i" -le 9 ] || break
       esc=$(printf '%s' "$s" | sed 's/#/##/g')
       if [ "$s" = "$cur" ]; then
-        # The session you are ON is already named in the status-left pill, so the strip shows only
-        # its NUMBER — repeating the name put it on screen twice. A mini pill rather than a bare
-        # bold digit: among named entries a naked "3" reads as a session called 3, whereas an
-        # accent pill is already this bar's word for "this is the current one".
-        acc="${acc} #[fg=${ACCENT},bg=terminal]#[fg=${INK},bg=${ACCENT},bold]${i}#[fg=${ACCENT},bg=terminal]#[default]"
+        # The current session is NAMED here again. It used to be a bare number, because the pill on
+        # the left carried the name and having it twice was the complaint; the left pill is now
+        # ssh-only, so this is the one place the name lives. Same two-chip shape as a window tab —
+        # coloured index, neutral name — so the bar has ONE pill vocabulary rather than three.
+        acc="${acc} #[fg=${PILL},bg=terminal]#[fg=${PINK},bg=${PILL},bold]${i}#[fg=${TEXT},bg=${CHIP},nobold] ${esc} #[fg=${CHIP},bg=terminal]#[default]"
       else
         acc="${acc}#[fg=${DIM},nobold] ${i} ${esc}"
       fi
