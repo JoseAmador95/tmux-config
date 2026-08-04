@@ -76,3 +76,7 @@ done
 
 # The status bar's session strip is derived from the same list, so refresh it here too.
 "$SCRIPTS/session-strip.sh"
+
+# And the roster of open sessions, for the same reason: this script already runs on create and on
+# rename, which are two of the four events that change it.
+"$SCRIPTS/session-save.sh"
