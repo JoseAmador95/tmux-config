@@ -68,7 +68,13 @@ strip=$(
         # the left carried the name and having it twice was the complaint; the left pill is now
         # ssh-only, so this is the one place the name lives. Same two-chip shape as a window tab —
         # coloured index, neutral name — so the bar has ONE pill vocabulary rather than three.
-        acc="${acc} #[fg=${PILL},bg=terminal]#[fg=${PINK},bg=${PILL},bold]${i}#[fg=${TEXT},bg=${CHIP},nobold] ${esc} #[fg=${CHIP},bg=terminal]#[default]"
+        #
+        # The spaces around ${i} are the padding, and they matter: without them the index sits
+        # flush against both edges of the accent, 1 column wide where a window tab's is 3, and the
+        # pill reads as cramped next to the tabs it is supposed to match. The comment above claimed
+        # "same two-chip shape as a window tab" while the code did not — note that the INACTIVE
+        # branch below was padded all along, so this was the odd one out twice over.
+        acc="${acc} #[fg=${PILL},bg=terminal]#[fg=${PINK},bg=${PILL},bold] ${i} #[fg=${TEXT},bg=${CHIP},nobold] ${esc} #[fg=${CHIP},bg=terminal]#[default]"
       else
         acc="${acc}#[fg=${DIM},nobold] ${i} ${esc}"
       fi
