@@ -132,10 +132,12 @@ without typing a name.
 | `prefix + R`       | respawn a dead pane                              | config |
 | `prefix + P`       | start/stop logging this pane to a file           | config |
 
-The line between two panes is a solid coloured bar, not a thin glyph — `pane-border-style` and
-`pane-active-border-style` set the same colour for both foreground and background, so whatever
-character tmux draws underneath disappears into a flat block. Works the same on every supported
-tmux version, since it never depends on which border glyph is available.
+The line between two panes is `pane-border-lines heavy` — a bolder weight than tmux's thin default,
+still a single glyph rather than a block, with `@thm_line` on top of it a shade more contrasting
+than before (see [Contrast](#contrast)). Two heavier-handed attempts at this — blank-cell "padding"
+that turned invisible without a matching background colour, then a same-colour-fg/bg solid bar that
+fixed the visibility but lost the thin line entirely — were both tried and reverted in favour of this
+smaller change.
 
 ### Copy & clipboard
 
@@ -303,8 +305,12 @@ across the four flavours measure ≥ 4.5:1.
 Three places deliberately depart from upstream `catppuccin/tmux`, all for legibility — which
 Catppuccin's own style guide asks for over fidelity. Pill text is `#ffffff`, not `crust`, because
 crust on an accent clears 4.5:1 on _no_ Latte accent (upstream's own default mauve pill is 4.09:1).
-Inactive pane borders use `overlay1`, not `overlay0`, which on white is 2.60:1 and fails even the
-3:1 UI threshold. And `message-style` is white on the accent rather than upstream's teal on
+Inactive pane borders use `overlay2`, not `overlay0` (2.60:1 on white, well under the 3:1 UI
+threshold) or `overlay1` (3.20:1 — technically past it, but with barely any headroom, and the
+`heavy` box-drawing weight it sits on made the shortfall obvious). `overlay2` measures 3.95:1 on
+Latte and clears every other flavour by a wider margin still, while staying one of Catppuccin's own
+quiet greys rather than reaching for a louder colour. And `message-style` is white on the accent
+rather than upstream's teal on
 `overlay0`, which is 1.44:1.
 
 ### Why nothing on the bar shells out

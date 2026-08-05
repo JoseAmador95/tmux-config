@@ -83,7 +83,7 @@ DARK_INK='#000000'
 tmux set -g @thm_accent "#{@thm_blue}"      # pills, active border, prompts
 tmux set -g @thm_urgent "#{@thm_red}"       # the mode pill while the prefix is held
 tmux set -g @thm_dim    "#{@thm_subtext0}"  # inactive tabs, session strip
-tmux set -g @thm_line   "#{@thm_overlay1}"  # inactive pane borders
+tmux set -g @thm_line   "#{@thm_overlay2}"  # inactive pane borders
 tmux set -g @thm_dead   "#{@thm_maroon}"    # a pane whose process exited
 tmux set -g @thm_card   "#{@thm_base}"      # the quiet chip behind an inactive window
 tmux set -g @thm_chip   "#{@thm_surface0}"  # the neutral half of an active pill
