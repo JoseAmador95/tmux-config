@@ -14,10 +14,10 @@ NAVIGATION
   prefix Tab    last session                      prefix 1..9  go to the N-th session
   main is always 1; the rest are ordered by most recent use, so the digits move
   click the session strip on the right to open the session manager too
-SESSION MANAGER (M-s) — opens in INSERT, like vim
-  type to filter    jj / kk  leave for NORMAL      Esc  one level back
-  (NORMAL) i or /   filter again                   1-9  switch    j/k  move
-  (NORMAL) r rename   n new   x kill   s tree      q    close
+SESSION TREE (M-s) — tmux's own picker, no modes
+  1-9 / Enter  switch      j/k  move           C-s  search by name (n/N repeat)
+  x  kill session          t  tag   X  kill tagged        q / Esc  close
+  rename & create a session live in the M-Space palette
 PANES
   prefix H/J/K/L   resize                         prefix z  zoom (default)
   prefix R         revive dead pane               prefix x  kill pane (default)

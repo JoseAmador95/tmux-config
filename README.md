@@ -27,7 +27,7 @@ up for you. `bootstrap.sh` warns if it is somewhere else.
 | Need               | Why                                                                                                                                                                                |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **tmux ≥ 3.4**     | the floor. `bootstrap.sh` refuses below it. Automatic light/dark needs **3.6** (optional).                                                                                         |
-| **`fzf` ≥ 0.59**   | not optional — `Alt-s`, `Alt-Space`, `prefix + ?` and `prefix + e` are fzf popups, with no fallback. Below 0.59, `Esc` leaves the session popup's `/` search by closing the popup. |
+| **`fzf` ≥ 0.59**   | not optional — `Alt-Space`, `prefix + ?`, `prefix + e` and `prefix + u` are fzf popups, with no fallback. (`Alt-s` is tmux's own tree and needs nothing.) |
 | **A Nerd Font**    | the bar's pill caps and per-window icons.                                                                                                                                          |
 | **A UTF-8 locale** | with `LC_CTYPE=POSIX` tmux silently drops the Nerd Font glyphs and the pills lose their rounded ends.                                                                              |
 | **Python 3.6+**    | `extrakto` (`prefix + e`) and `tmux-easy-motion`.                                                                                                                                  |
@@ -45,7 +45,7 @@ each tab is a two-tone pill, and on the right a numbered strip of your open sess
 
 There is one terminal window and one tab in it. Everything else is a tmux **session**, and sessions
 are **named** — the names drive the numbered strip on the bar, `prefix + <digit>`, and the SSH
-shield. You move between them with `Alt-,` / `Alt-.` or the `Alt-s` popup.
+shield. You move between them with `Alt-,` / `Alt-.` or the `Alt-s` tree.
 
 | Command          | What it does                                                                                                          |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------- |
@@ -65,8 +65,8 @@ line of `~/.config/tmux/agent.local`, else a shell with a warning. Per host:
 
 - **A status bar that never shells out** — no `#()` anywhere, so nothing on it can hang or go
   stale. [Details](#the-status-bar).
-- **A two-mode session manager** on `Alt-s`, because type-to-filter and single-letter actions
-  cannot share a keyboard. [Details](#the-session-manager-alt-s).
+- **tmux's own session tree** on `Alt-s` — instant, no modes, no dependency.
+  [Details](#the-session-manager-alt-s).
 - **Sessions survive a reboot** — a roster of names and paths, replayed by the first `t`.
   [Details](#sessions-survive-a-reboot).
 - **The SSH shield** — a pane in an `ssh_<host>` session cannot silently fall back to a local
@@ -92,7 +92,7 @@ fetched.
 
 | Key               | Action                                             | Owner  |
 | ----------------- | -------------------------------------------------- | ------ |
-| `Alt-s`           | session manager popup (or click the session strip) | config |
+| `Alt-s`           | session tree (or click the session pill)           | config |
 | `Alt-,` / `Alt-.` | previous / next session                            | config |
 | `prefix + Tab`    | last session (toggle)                              | config |
 | `prefix + 1`…`9`  | jump to the N-th session in the strip              | config |
@@ -102,7 +102,7 @@ fetched.
 ordered by how recently you were in it, so `prefix + 2` is effectively an alt-tab between the two
 you actually use. A digit is a position on the bar you are looking at, not a name you can memorise.
 `scripts/session-order.sh` is the single definition of that order — the bar, the digits and the
-`Alt-s` popup all read it, which is what keeps them agreeing.
+`Alt-s` tree has its own ordering — see the session manager section.
 
 ### Windows
 
@@ -200,35 +200,37 @@ at all: they need `status-interval > 0` and `status-right`, which the session st
 
 ## The session manager (`Alt-s`)
 
-Two modes, like vim, because type-to-filter and single-letter actions cannot share a keyboard.
-**It opens in insert**, so you can just start typing:
+`Alt-s` opens **`choose-tree`, tmux's own session picker**. No modes, no filtering to escape from,
+and no process spawned per keystroke.
 
-| Mode                 | Keys |
-| -------------------- | ---- |
-| **insert** (on open) | type to filter · **`jj` or `kk`** for normal mode · `Enter` switch · `Ctrl-j`/`Ctrl-k` move · `Esc` → normal |
-| **normal**           | `1`…`9` jump + switch · `j`/`k` move · `g`/`G` ends · `r` rename · `n` new · `x` kill · `s` classic `choose-tree` · `i` or `/` back to typing · `q`/`Esc` close |
+| Key | |
+| --- | --- |
+| `1`…`9` | switch to that session immediately — the number is shown in brackets on the left |
+| `j` / `k`, arrows | move · `Enter` chooses |
+| `C-s` | search by name · `n` / `N` repeat forwards / backwards |
+| `x` | kill the session (asks first) · `t` tags, `X` kills every tagged one |
+| `q` / `Esc` | close |
 
-`jj` and `kk` leave insert exactly the way they do in nvim. The destructive keys are **normal-mode
-only** on purpose — `x` must not be reachable while you are typing, which was the original complaint
-that gave this dialog its modes in the first place. `Esc` always means one level back:
-insert → normal, normal → close, so the reflex of pressing it to stop typing never closes the dialog.
+It replaced a hand-written fzf popup that implemented vim's `jj` to leave insert mode. fzf can only
+express a two-key gesture as a `transform` running an external command, so **every `j` and `k` press
+forked a shell and made three tmux round-trips just to answer "down" — 18 ms per keypress**, on the
+two keys you navigate with. The native tree does the same job in-process.
 
-`r`, `n` and `x` open a prompt that **`Esc` cancels**; `x` confirms with the cursor parked on `no`.
-Leaving insert clears the filter, so the digits always address the full list — in the same order as
-`prefix + <digit>` and the numbers on the status bar, because all three read
-`scripts/session-order.sh`. That order is `main` first, then most recently used, so it changes as
-you move around; what never changes is that a given digit means the same session everywhere.
+**Rename and create are not in the tree** — they live in the `Alt-Space` palette (`rename session`,
+`new session`), which is the one thing this trade cost.
 
-**One difference from vim:** there is no `timeoutlen`. The second `j` switches mode however long you
-waited, so a query can never contain `jj` — a session whose name has a double `j` cannot be reached
-by *search*, only by `j`/`k` and the digits in normal mode.
+**The numbering is choose-tree's own.** Its `-O` sort accepts only `index`, `name` or `time`, none of
+which can express `scripts/session-order.sh`'s rule (`main` pinned first, then most recently used).
+So the `(1)(2)(3)` in the tree and `prefix + <digit>` can disagree once several sessions are open.
+What always holds: `prefix + 1` is `main`.
 
-**Closing it with the mouse:** a left-click outside the popup does not close it, and cannot be made
-to. tmux's `popup_key_cb` returns "keep open" for out-of-bounds mouse events in every version from
-3.4 to master _and_ swallows the click, so fzf never receives it and `--no-mouse` changes nothing.
-Use `q` / `Esc`, or the mouse gesture tmux does offer: **right-press outside, drag onto `Close`,
-release** (tmux's own popup menu, ≥ 3.3). A right click-and-release in place only opens and closes
-that menu again — it is a drag, not a click.
+**Closing a popup with the mouse** (`Alt-Space`, `prefix + ?`, `prefix + u` — `Alt-s` is not a popup
+any more): a left-click outside does not close it, and cannot be made to. tmux's `popup_key_cb`
+returns "keep open" for out-of-bounds mouse events in every version from 3.4 to master _and_
+swallows the click, so the program inside never receives it and `--no-mouse` changes nothing. Use
+`q` / `Esc`, or the gesture tmux does offer: **right-press outside, drag onto `Close`, release**
+(tmux's own popup menu, ≥ 3.3). A right click-and-release in place only opens and closes that menu
+again — it is a drag, not a click.
 
 ---
 
@@ -242,13 +244,14 @@ cap takes the colour of the chip it terminates. That edge inside one object is w
 accent reading as a slab — it is the shape Catppuccin itself uses. Inactive tabs get a quiet card
 instead of floating on the bar.
 
-- **left** — empty for a local session. An `ssh_<host>` session shows its **host** here instead, in
-  that host's own stable tint, so a remote session can never be mistaken for a local one.
+- **left** — the current mode (prefix held / copy-mode / zoom / synchronized), and in an
+  `ssh_<host>` session the **host** in front of it, in that host's own stable tint, so a remote
+  session can never be mistaken for a local one. Both collapse to nothing when idle, so on a local
+  session the left is empty.
 - **centre** — the window list, anchored with `status-justify absolute-centre` so the tabs do not
   slide when the session name changes length. Each window carries an icon for what is running in it.
-- **right** — the current mode (prefix / copy-mode / zoom / synchronized), then the numbered session
-  strip that `prefix + <digit>` jumps to. The session you are on is the two-chip pill in it, and
-  clicking the strip opens the session manager.
+- **right** — the session you are on, as a single two-chip pill. Clicking it opens the session
+  tree. It used to list every session, which is what made the bar collide with itself.
 
 ### Flavours, and following the system theme
 
