@@ -24,13 +24,13 @@ up for you. `bootstrap.sh` warns if it is somewhere else.
 
 **Prerequisites**, each of which has cost a debugging session:
 
-| Need               | Why                                                                                                                                                                                |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **tmux ≥ 3.4**     | the floor. `bootstrap.sh` refuses below it. Automatic light/dark needs **3.6** (optional).                                                                                         |
+| Need               | Why                                                                                                                                                       |
+| ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **tmux ≥ 3.4**     | the floor. `bootstrap.sh` refuses below it. Automatic light/dark needs **3.6** (optional).                                                                |
 | **`fzf` ≥ 0.59**   | not optional — `Alt-Space`, `prefix + ?`, `prefix + e` and `prefix + u` are fzf popups, with no fallback. (`Alt-s` is tmux's own tree and needs nothing.) |
-| **A Nerd Font**    | the bar's pill caps and per-window icons.                                                                                                                                          |
-| **A UTF-8 locale** | with `LC_CTYPE=POSIX` tmux silently drops the Nerd Font glyphs and the pills lose their rounded ends.                                                                              |
-| **Python 3.6+**    | `extrakto` (`prefix + e`) and `tmux-easy-motion`.                                                                                                                                  |
+| **A Nerd Font**    | the bar's pill caps and per-window icons.                                                                                                                 |
+| **A UTF-8 locale** | with `LC_CTYPE=POSIX` tmux silently drops the Nerd Font glyphs and the pills lose their rounded ends.                                                     |
+| **Python 3.6+**    | `extrakto` (`prefix + e`) and `tmux-easy-motion`.                                                                                                         |
 
 `bootstrap.sh` is idempotent — re-run it any time. It checks the versions, fetches the submodules,
 marks the scripts executable and wires `shell/functions.sh` into your rc inside a
@@ -90,19 +90,22 @@ fetched.
 
 ### Sessions
 
-| Key               | Action                                             | Owner  |
-| ----------------- | -------------------------------------------------- | ------ |
-| `Alt-s`           | session tree (or click the session pill)           | config |
-| `Alt-,` / `Alt-.` | previous / next session                            | config |
-| `prefix + Tab`    | last session (toggle)                              | config |
-| `prefix + 1`…`9`  | jump to the N-th session in the strip              | config |
-| `prefix + @`      | promote this pane to a session of its own          | config |
+| Key               | Action                                    | Owner  |
+| ----------------- | ----------------------------------------- | ------ |
+| `Alt-s`           | session tree (or click the session pill)  | config |
+| `Alt-,` / `Alt-.` | previous / next session                   | config |
+| `prefix + Tab`    | last session (toggle)                     | config |
+| `prefix + 1`…`9`  | jump to the N-th session in the strip     | config |
+| `prefix + @`      | promote this pane to a session of its own | config |
 
-**The digits follow the strip, and the strip moves.** `main` is always `1`; every other session is
-ordered by how recently you were in it, so `prefix + 2` is effectively an alt-tab between the two
-you actually use. A digit is a position on the bar you are looking at, not a name you can memorise.
-`scripts/session-order.sh` is the single definition of that order — the bar, the digits and the
-`Alt-s` tree has its own ordering — see the session manager section.
+**`prefix + <digit>` is blind now — the bar shows no digit at all.** `main` is always `1`; every
+other session is ordered by how recently you were in it, so `prefix + 2` is effectively an alt-tab
+between the two you actually use. That ordering lives in `scripts/session-order.sh`, and it used to
+be readable off the bar — first as the full numbered strip, then, after that strip was cut down to
+one pill, at least as that pill's own number. The number is gone now too: the pill shows an icon in
+its place (see [the status bar](#the-status-bar)), so a digit is something you either remember or
+look up in the `Alt-s` tree, which shows its own — **and does not use this same order**, see the
+session manager section below.
 
 ### Windows
 
@@ -203,13 +206,13 @@ at all: they need `status-interval > 0` and `status-right`, which the session st
 `Alt-s` opens **`choose-tree`, tmux's own session picker**. No modes, no filtering to escape from,
 and no process spawned per keystroke.
 
-| Key | |
-| --- | --- |
-| `1`…`9` | switch to that session immediately — the number is shown in brackets on the left |
-| `j` / `k`, arrows | move · `Enter` chooses |
-| `C-s` | search by name · `n` / `N` repeat forwards / backwards |
-| `x` | kill the session (asks first) · `t` tags, `X` kills every tagged one |
-| `q` / `Esc` | close |
+| Key               |                                                                                  |
+| ----------------- | -------------------------------------------------------------------------------- |
+| `1`…`9`           | switch to that session immediately — the number is shown in brackets on the left |
+| `j` / `k`, arrows | move · `Enter` chooses                                                           |
+| `C-s`             | search by name · `n` / `N` repeat forwards / backwards                           |
+| `x`               | kill the session (asks first) · `t` tags, `X` kills every tagged one             |
+| `q` / `Esc`       | close                                                                            |
 
 It replaced a hand-written fzf popup that implemented vim's `jj` to leave insert mode. fzf can only
 express a two-key gesture as a `transform` running an external command, so **every `j` and `k` press
@@ -250,8 +253,12 @@ instead of floating on the bar.
   session the left is empty.
 - **centre** — the window list, anchored with `status-justify absolute-centre` so the tabs do not
   slide when the session name changes length. Each window carries an icon for what is running in it.
-- **right** — the session you are on, as a single two-chip pill. Clicking it opens the session
-  tree. It used to list every session, which is what made the bar collide with itself.
+- **right** — the session you are on, as a single **rounded** two-chip pill: a tmux glyph in the
+  accent, the name in a neutral chip. It used to hold the session's number instead of the icon, back
+  when the whole strip was visible and a digit meant something to compare; with only one pill left
+  there was nothing to compare it against, so the space went to the icon. Clicking the pill opens
+  the session tree. The strip used to list every session, which is what made the bar collide with
+  itself.
 
 ### Flavours, and following the system theme
 

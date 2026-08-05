@@ -1,9 +1,14 @@
 #!/bin/sh
-# session-goto.sh N — jump to the N-th session (1-based) of the status bar's session list.
+# session-goto.sh N — jump to the N-th session (1-based) of session-order.sh's canonical order.
 # Bound to `prefix + <digit>` and launched via `run-shell`, so it switches the client WITHOUT
-# opening a pane. tmux has no stable session index, so the order comes from session-order.sh —
-# the SAME script the bar and the Alt-s popup use, which is what makes the visible position and
-# the digit the same session. Do not sort here.
+# opening a pane. tmux has no stable session index, so the order comes from session-order.sh.
+#
+# THIS SCRIPT IS session-order.sh's ONLY REMAINING CONSUMER. The status bar used to share this
+# order too — first showing every session's digit, then, after round 8 cut the bar down to one
+# pill, at least that pill's own — but the bar reads nothing from this file any more (see
+# session-order.sh's own header for why). So a digit pressed here is no longer something you can
+# read off the bar first; it is memorised, or looked up in the `Alt-s` tree, which numbers its
+# entries by a DIFFERENT rule (choose-tree's own `-O`, not this file). Do not sort here.
 set -u
 
 SELF_DIR=$(cd "$(dirname "$0")" && pwd)
