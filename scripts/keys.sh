@@ -11,7 +11,7 @@ NAVIGATION
   M-n           split (Zellij-like, longer axis)  M-t   new window in the cwd
   M-1..9        go to window N                    M-; / M-'   previous / next window
   M-, / M-.     previous / next session           M-s   session tree
-  M--           last session (toggle)             prefix 0  always jump to main
+  M--           last session (toggle)             M-0 / prefix 0  always jump to main
   prefix Tab    last session (toggle), same as M--
   click the session pill on the right to open the session tree too
 SESSION TREE (M-s) — tmux's own picker, no modes

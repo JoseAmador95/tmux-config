@@ -45,8 +45,8 @@ each tab is a two-tone pill, and on the right a numbered strip of your open sess
 
 There is one terminal window and one tab in it. Everything else is a tmux **session**, and sessions
 are **named** — the name drives the session pill on the bar and the SSH shield. You move between
-them with `Alt-,` / `Alt-.`, `Alt--` to toggle back to the last one, the `Alt-s` tree, or
-`prefix + 0` straight to `main`.
+them with `Alt-,` / `Alt-.`, `Alt--` to toggle back to the last one, the `Alt-s` tree, or `Alt-0`
+straight to `main`.
 
 | Command          | What it does                                                                                                          |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------- |
@@ -97,19 +97,20 @@ fetched.
 | `Alt-,` / `Alt-.` | previous / next session                   | config |
 | `Alt--`           | last session (toggle)                     | config |
 | `prefix + Tab`    | last session (toggle), same as `Alt--`    | config |
-| `prefix + 0`      | jump to `main`, always                    | config |
+| `Alt-0`           | jump to `main`, always                    | config |
+| `prefix + 0`      | jump to `main`, always — same as `Alt-0`  | config |
 | `prefix + @`      | promote this pane to a session of its own | config |
 
-**`prefix + 0` is unconditional.** It goes straight to the session literally named `main`, and says
-so instead of doing something else if that session does not exist yet — it does not create one;
-`t` already does attach-or-create.
+**`Alt-0` / `prefix + 0` are unconditional**, both running the exact same command. They go straight
+to the session literally named `main`, and say so instead of doing something else if that session
+does not exist yet — neither creates one; `t` already does attach-or-create.
 
 There used to be a `prefix + 1`…`9` too, jumping to the N-th session of a recency-based order. It
 is gone: the order lived in a file nothing else needed once the bar stopped showing a numbered
 strip and `Alt-s` got its own, different numbering, so a digit was memorised or looked up rather
 than read off anything on screen — and a keybinding that only works memorised isn't much of one.
-`Alt-,` / `Alt-.`, `Alt--`, `Alt-s` and `prefix + 0` are what is left to switch sessions without typing a
-name.
+`Alt-,` / `Alt-.`, `Alt--`, `Alt-s` and `Alt-0` / `prefix + 0` are what is left to switch sessions
+without typing a name.
 
 ### Windows
 
@@ -229,8 +230,8 @@ two keys you navigate with. The native tree does the same job in-process.
 **The numbering is choose-tree's own**, most-recently-used first (its `-O activity` sort — its `-O`
 takes one of tmux's fixed names, and despite how it reads, `time` is not one of them). Nothing else
 on the bar shows a competing order to disagree with any more — `prefix + <digit>` for 1-9 was
-retired along with the file that used to define it. `prefix + 0` still always means `main`, but that
-is a fixed target, not a position in this tree's list.
+retired along with the file that used to define it. `Alt-0` / `prefix + 0` still always mean `main`,
+but that is a fixed target, not a position in this tree's list.
 
 **Closing a popup with the mouse** (`Alt-Space`, `prefix + ?`, `prefix + u` — `Alt-s` is not a popup
 any more): a left-click outside does not close it, and cannot be made to. tmux's `popup_key_cb`
