@@ -2,7 +2,7 @@
 # split.sh — Zellij-like split for M-n: splits the LONGER axis so repeated splits spiral like
 # Zellij's dynamic tiling (fibonacci feel). A wide pane splits left/right (-h), a tall pane splits
 # top/bottom (-v). The @no_split lock is enforced by the binding (tmux.conf), not here. Launched
-# via run-shell, so the tmux commands target the active pane (like scripts/session-goto.sh).
+# via run-shell, so the tmux commands target the active pane (like scripts/promote.sh).
 set -u
 w=$(tmux display-message -p '#{pane_width}')
 h=$(tmux display-message -p '#{pane_height}')

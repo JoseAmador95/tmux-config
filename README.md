@@ -44,8 +44,8 @@ each tab is a two-tone pill, and on the right a numbered strip of your open sess
 ## The model
 
 There is one terminal window and one tab in it. Everything else is a tmux **session**, and sessions
-are **named** — the names drive the numbered strip on the bar, `prefix + <digit>`, and the SSH
-shield. You move between them with `Alt-,` / `Alt-.` or the `Alt-s` tree.
+are **named** — the name drives the session pill on the bar and the SSH shield. You move between
+them with `Alt-,` / `Alt-.`, the `Alt-s` tree, or `prefix + 0` straight to `main`.
 
 | Command          | What it does                                                                                                          |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------- |
@@ -90,30 +90,24 @@ fetched.
 
 ### Sessions
 
-| Key               | Action                                      | Owner  |
-| ----------------- | ------------------------------------------- | ------ |
-| `Alt-s`           | session tree (or click the session pill)    | config |
-| `Alt-,` / `Alt-.` | previous / next session                     | config |
-| `prefix + Tab`    | last session (toggle)                       | config |
-| `prefix + 0`      | jump to `main`, always — see below          | config |
-| `prefix + 1`…`9`  | jump to the N-th session of that same order | config |
-| `prefix + @`      | promote this pane to a session of its own   | config |
+| Key               | Action                                    | Owner  |
+| ----------------- | ----------------------------------------- | ------ |
+| `Alt-s`           | session tree (or click the session pill)  | config |
+| `Alt-,` / `Alt-.` | previous / next session                   | config |
+| `prefix + Tab`    | last session (toggle)                     | config |
+| `prefix + 0`      | jump to `main`, always                    | config |
+| `prefix + @`      | promote this pane to a session of its own | config |
 
-**`prefix + 0` is the one exception to everything below — it is unconditional.** It goes straight
-to the session literally named `main`, decoupled from `session-order.sh` entirely, and says so
-instead of doing something else if that session does not exist yet (it does not create one; `t`
-already does attach-or-create). `main` being at position `1` in the order below is a fact about
-today's session list, not a guarantee — a fresh boot before `main` exists would put whatever you
-last used there instead. `0` never has that ambiguity.
+**`prefix + 0` is unconditional.** It goes straight to the session literally named `main`, and says
+so instead of doing something else if that session does not exist yet — it does not create one;
+`t` already does attach-or-create.
 
-**`prefix + <digit>` for 1-9 is blind now — the bar shows no digit at all.** `main` is usually `1`;
-every other session is ordered by how recently you were in it, so `prefix + 2` is effectively an
-alt-tab between the two you actually use. That ordering lives in `scripts/session-order.sh`, and it
-used to be readable off the bar — first as the full numbered strip, then, after that strip was cut
-down to one pill, at least as that pill's own number. The number is gone now too: the pill shows an
-icon in its place (see [the status bar](#the-status-bar)), so a digit is something you either
-remember or look up in the `Alt-s` tree, which shows its own — **and does not use this same order**, see the
-session manager section below.
+There used to be a `prefix + 1`…`9` too, jumping to the N-th session of a recency-based order. It
+is gone: the order lived in a file nothing else needed once the bar stopped showing a numbered
+strip and `Alt-s` got its own, different numbering, so a digit was memorised or looked up rather
+than read off anything on screen — and a keybinding that only works memorised isn't much of one.
+`Alt-,` / `Alt-.`, `Alt-s` and `prefix + 0` are what is left to switch sessions without typing a
+name.
 
 ### Windows
 
@@ -230,10 +224,11 @@ two keys you navigate with. The native tree does the same job in-process.
 **Rename and create are not in the tree** — they live in the `Alt-Space` palette (`rename session`,
 `new session`), which is the one thing this trade cost.
 
-**The numbering is choose-tree's own.** Its `-O` sort accepts only `index`, `name` or `time`, none of
-which can express `scripts/session-order.sh`'s rule (`main` pinned first, then most recently used).
-So the `(1)(2)(3)` in the tree and `prefix + <digit>` can disagree once several sessions are open.
-What always holds: `prefix + 1` is `main`.
+**The numbering is choose-tree's own**, most-recently-used first (its `-O activity` sort — its `-O`
+takes one of tmux's fixed names, and despite how it reads, `time` is not one of them). Nothing else
+on the bar shows a competing order to disagree with any more — `prefix + <digit>` for 1-9 was
+retired along with the file that used to define it. `prefix + 0` still always means `main`, but that
+is a fixed target, not a position in this tree's list.
 
 **Closing a popup with the mouse** (`Alt-Space`, `prefix + ?`, `prefix + u` — `Alt-s` is not a popup
 any more): a left-click outside does not close it, and cannot be made to. tmux's `popup_key_cb`
