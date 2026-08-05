@@ -132,6 +132,10 @@ without typing a name.
 | `prefix + R`       | respawn a dead pane                              | config |
 | `prefix + P`       | start/stop logging this pane to a file           | config |
 
+The line between two panes is `heavy` box-drawing below **tmux 3.6**, and true blank-cell padding
+(`pane-border-lines spaces`) from 3.6 on, gated by `%if` at parse time — `spaces` errors as an
+unknown value on anything older, checked directly against tmux's own options table per version.
+
 ### Copy & clipboard
 
 | Key                                   | Action                                       | Owner     |
