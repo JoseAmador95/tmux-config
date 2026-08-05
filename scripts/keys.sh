@@ -22,7 +22,7 @@ PANES
   prefix H/J/K/L   resize                         prefix z  zoom (default)
   prefix R         revive dead pane               prefix x  kill pane (default)
 COPY
-  M-i           enter copy-mode                    prefix [  enter copy-mode (tmux default)
+  M-d           enter copy-mode                    prefix [  enter copy-mode (tmux default)
   prefix y      copy the WHOLE scrollback          prefix Y  copy only the last output
   v / y         (copy-mode) select / copy          C-c    (copy-mode) copy
   d / u         (copy-mode) jump 10 lines down / up
