@@ -4,7 +4,7 @@
 # THIS IS THE ONLY DEFINITION OF THAT ORDER, the same way theme.sh is the only definition of the
 # palette. Three things must agree or the config lies to you: the numbers on the status bar
 # (session-strip.sh), the digits `prefix + <digit>` jumps to (session-goto.sh), and the rows in the
-# Alt-s popup (session-menu.sh). They each used to run their own `list-sessions | sort`, which is
+# and, until round 8, the Alt-s popup. They each used to run their own `list-sessions | sort`, which is
 # three copies of a rule and one refactor away from drifting. They now all call this.
 #
 # The order:
@@ -19,7 +19,7 @@
 # because it is drawn from this same list.
 #
 # The field separator is a TAB: session names may contain spaces (rename-session allows them), and
-# session-menu.sh already uses tab for the same reason. A name containing a literal tab would break
+# the popup scripts use tab for the same reason. A name containing a literal tab would break
 # this, as it already breaks the popup.
 set -u
 
