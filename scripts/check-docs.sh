@@ -7,6 +7,15 @@
 # there would fail the build over a sentence. Deleting a binding still means editing both docs by
 # hand. Run it with plugins/ present, or the plugin-owned keys are simply absent and pass silently.
 #
+# A SECOND BLIND SPOT, found the hard way: keys() below diffs by KEY NAME ONLY, not key -> command
+# (unlike the manual verification method this repo actually uses when a round touches bindings —
+# see the git log for "compare key -> COMMAND, never by which keys exist"). So overriding a key tmux
+# ALREADY binds by default — prefix + 0 was `select-window -t :=0` until it became a jump-to-main
+# command — is invisible here: the name "0" exists on both sides of the vanilla-vs-ours diff, so it
+# never reaches the undocumented-key check at all, whether or not it is actually documented. This
+# script would have reported clean even if prefix + 0 had shipped with no docs anywhere. Passing
+# check-docs.sh is not proof a key like that is documented; check by hand.
+#
 # This is a lint, not a runtime helper: nothing in tmux.conf calls it. Run it after touching keys.
 #   ./scripts/check-docs.sh            # exit 0 = in sync
 #

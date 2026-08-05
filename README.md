@@ -90,21 +90,29 @@ fetched.
 
 ### Sessions
 
-| Key               | Action                                    | Owner  |
-| ----------------- | ----------------------------------------- | ------ |
-| `Alt-s`           | session tree (or click the session pill)  | config |
-| `Alt-,` / `Alt-.` | previous / next session                   | config |
-| `prefix + Tab`    | last session (toggle)                     | config |
-| `prefix + 1`…`9`  | jump to the N-th session in the strip     | config |
-| `prefix + @`      | promote this pane to a session of its own | config |
+| Key               | Action                                      | Owner  |
+| ----------------- | ------------------------------------------- | ------ |
+| `Alt-s`           | session tree (or click the session pill)    | config |
+| `Alt-,` / `Alt-.` | previous / next session                     | config |
+| `prefix + Tab`    | last session (toggle)                       | config |
+| `prefix + 0`      | jump to `main`, always — see below          | config |
+| `prefix + 1`…`9`  | jump to the N-th session of that same order | config |
+| `prefix + @`      | promote this pane to a session of its own   | config |
 
-**`prefix + <digit>` is blind now — the bar shows no digit at all.** `main` is always `1`; every
-other session is ordered by how recently you were in it, so `prefix + 2` is effectively an alt-tab
-between the two you actually use. That ordering lives in `scripts/session-order.sh`, and it used to
-be readable off the bar — first as the full numbered strip, then, after that strip was cut down to
-one pill, at least as that pill's own number. The number is gone now too: the pill shows an icon in
-its place (see [the status bar](#the-status-bar)), so a digit is something you either remember or
-look up in the `Alt-s` tree, which shows its own — **and does not use this same order**, see the
+**`prefix + 0` is the one exception to everything below — it is unconditional.** It goes straight
+to the session literally named `main`, decoupled from `session-order.sh` entirely, and says so
+instead of doing something else if that session does not exist yet (it does not create one; `t`
+already does attach-or-create). `main` being at position `1` in the order below is a fact about
+today's session list, not a guarantee — a fresh boot before `main` exists would put whatever you
+last used there instead. `0` never has that ambiguity.
+
+**`prefix + <digit>` for 1-9 is blind now — the bar shows no digit at all.** `main` is usually `1`;
+every other session is ordered by how recently you were in it, so `prefix + 2` is effectively an
+alt-tab between the two you actually use. That ordering lives in `scripts/session-order.sh`, and it
+used to be readable off the bar — first as the full numbered strip, then, after that strip was cut
+down to one pill, at least as that pill's own number. The number is gone now too: the pill shows an
+icon in its place (see [the status bar](#the-status-bar)), so a digit is something you either
+remember or look up in the `Alt-s` tree, which shows its own — **and does not use this same order**, see the
 session manager section below.
 
 ### Windows
