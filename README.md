@@ -139,6 +139,11 @@ that turned invisible without a matching background colour, then a same-colour-f
 fixed the visibility but lost the thin line entirely — were both tried and reverted in favour of this
 smaller change.
 
+Each pane's frame (`pane-border-status top`) shows its index, an icon for whatever is actually
+running in **that pane** — reusing `@wicon`, the same per-command icon already on the window tabs —
+and the window name. Two panes in the same window can and do show different icons, since each
+pane's own `#{pane_current_command}` drives it independently of the window's.
+
 ### Copy & clipboard
 
 | Key                                   | Action                                       | Owner     |
