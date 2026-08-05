@@ -132,9 +132,10 @@ without typing a name.
 | `prefix + R`       | respawn a dead pane                              | config |
 | `prefix + P`       | start/stop logging this pane to a file           | config |
 
-The line between two panes is `heavy` box-drawing below **tmux 3.6**, and true blank-cell padding
-(`pane-border-lines spaces`) from 3.6 on, gated by `%if` at parse time — `spaces` errors as an
-unknown value on anything older, checked directly against tmux's own options table per version.
+The line between two panes is a solid coloured bar, not a thin glyph — `pane-border-style` and
+`pane-active-border-style` set the same colour for both foreground and background, so whatever
+character tmux draws underneath disappears into a flat block. Works the same on every supported
+tmux version, since it never depends on which border glyph is available.
 
 ### Copy & clipboard
 
