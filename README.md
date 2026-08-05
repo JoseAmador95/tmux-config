@@ -169,6 +169,11 @@ unknown value on anything older, checked directly against tmux's own options tab
 | `prefix + r` | reload `tmux.conf`                               | config |
 | `F12`        | OFF mode — every tmux key off, for a nested tmux | config |
 
+The `Alt-Space` palette also has a **show documentation** entry — it pages this same README in
+place, inside the palette's own popup. Every other palette action is a curated tmux command
+(`eval tmux …`); this one is the one exception, a `!`-prefixed raw shell command instead, because
+`display-popup` cannot be nested — asked for one from inside another, tmux opens neither.
+
 `prefix + f` is the only key here that replaces a tmux default (`find-window`). Everything else was
 either free or already this config's.
 
