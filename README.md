@@ -154,6 +154,7 @@ unknown value on anything older, checked directly against tmux's own options tab
 | ------------ | --------------------------------------------------------- | ---------------- |
 | `prefix + e` | grab a path/URL/hash off the screen into the command line | extrakto         |
 | `prefix + f` | label every match on screen; press its letter to copy     | tmux-fingers     |
+| `Alt-f`      | same, no prefix                                           | tmux-fingers     |
 | `prefix + F` | fuzzy-search the scrollback and jump to the hit           | tmux-fuzzback    |
 | `prefix + u` | pick a URL from the pane and open it                      | config           |
 | `U` / `O`    | (copy mode) jump back to the previous URL / file path     | config           |
@@ -181,22 +182,22 @@ evaluated and rejected: its `#tag` pin is honoured on install only, changing one
 `prefix + U` then fails on the resulting detached HEAD, and its own last substantive commit was in
 February 2023 — while `brew install tpm`, the tidiest way to install it, is unavailable on Linux.
 
-| Plugin             | What it gives you                                   | Needs               |
-| ------------------ | --------------------------------------------------- | ------------------- |
-| `tmux-fingers`     | hint letters painted over the screen (`prefix + f`) | a binary, see below |
-| `tmux-fuzzback`    | scrollback search + jump (`prefix + F`)             | fzf                 |
-| `extrakto`         | grab tokens off the screen (`prefix + e`)           | Python 3.6+, fzf    |
-| `tmux-open`        | open the selection from copy mode (`o`)             | `open` / `xdg-open` |
-| `tmux-easy-motion` | easy-motion jumps in copy mode (`s`)                | Python              |
+| Plugin             | What it gives you                                             | Needs               |
+| ------------------ | ------------------------------------------------------------- | ------------------- |
+| `tmux-fingers`     | hint letters painted over the screen (`prefix + f` / `Alt-f`) | a binary, see below |
+| `tmux-fuzzback`    | scrollback search + jump (`prefix + F`)                       | fzf                 |
+| `extrakto`         | grab tokens off the screen (`prefix + e`)                     | Python 3.6+, fzf    |
+| `tmux-open`        | open the selection from copy mode (`o`)                       | `open` / `xdg-open` |
+| `tmux-easy-motion` | easy-motion jumps in copy mode (`s`)                          | Python              |
 
 Updating one is deliberate: `git submodule update --remote plugins/<name>`, then a commit that says
 what moved.
 
 **`tmux-fingers` is a compiled binary**, and prebuilt ones exist for **Linux x86_64 and macOS arm64
 only**. Anywhere else, build it with Crystal or `brew install morantron/tmux-fingers/tmux-fingers`;
-until then `prefix + f` does nothing and everything else is unaffected. `bootstrap.sh` fetches it,
-and `tmux.conf` refuses to load the plugin until the binary exists — its own loader would otherwise
-fire a network installer in the background _every time the config is sourced_.
+until then `prefix + f` and `Alt-f` both do nothing and everything else is unaffected. `bootstrap.sh`
+fetches it, and `tmux.conf` refuses to load the plugin until the binary exists — its own loader would
+otherwise fire a network installer in the background _every time the config is sourced_.
 
 Three replaced hand-written code: `fuzzback.sh` and `grab.sh` were reimplementations of
 `tmux-fuzzback` and `extrakto` and are gone. **`tmux-sessionist` was tried and rejected** — its
