@@ -136,7 +136,7 @@ without typing a name.
 
 | Key                                   | Action                                       | Owner     |
 | ------------------------------------- | -------------------------------------------- | --------- |
-| `Alt-v`                               | enter copy mode                              | config    |
+| `Alt-i`                               | enter copy mode                              | config    |
 | `v` / `y`                             | select / copy, **without leaving copy mode** | config    |
 | `Enter`, `Ctrl-C`, mouse-drag-release | copy, same rule                              | config    |
 | `d` / `u`                             | jump 10 lines down / up (vim's `10j`/`10k`)  | config    |
@@ -309,7 +309,7 @@ module forces the timer on, and why none of them fit a bar whose `status-right` 
 
 ## Copy mode
 
-`prefix + [`, `Alt-v`, or scroll up. `v` selects; `y` / `Enter` / `Ctrl-C` / mouse-drag-release copy
+`prefix + [`, `Alt-i`, or scroll up. `v` selects; `y` / `Enter` / `Ctrl-C` / mouse-drag-release copy
 **without** leaving copy mode, and the selection also reaches the system clipboard. `q` / `Esc` exits.
 
 `d` / `u` jump ten lines, like vim's `10j` / `10k` — deliberately not half a page, which `C-d` /
