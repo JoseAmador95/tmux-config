@@ -30,6 +30,7 @@ COPY
 FIND / GRAB
   prefix e      grab a path/URL/token off screen   prefix F  search scrollback, jump to hit
   prefix f      label every match on screen, press its letter to copy
+  M-f           same, no prefix
   prefix u      pick a URL and open it             U / O     (copy-mode) prev URL / prev path
   s             (copy-mode) easy-motion jump
 WINDOWS & SESSIONS
