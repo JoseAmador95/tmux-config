@@ -45,7 +45,8 @@ each tab is a two-tone pill, and on the right a numbered strip of your open sess
 
 There is one terminal window and one tab in it. Everything else is a tmux **session**, and sessions
 are **named** — the name drives the session pill on the bar and the SSH shield. You move between
-them with `Alt-,` / `Alt-.`, the `Alt-s` tree, or `prefix + 0` straight to `main`.
+them with `Alt-,` / `Alt-.`, `Alt--` to toggle back to the last one, the `Alt-s` tree, or
+`prefix + 0` straight to `main`.
 
 | Command          | What it does                                                                                                          |
 | ---------------- | --------------------------------------------------------------------------------------------------------------------- |
@@ -94,7 +95,8 @@ fetched.
 | ----------------- | ----------------------------------------- | ------ |
 | `Alt-s`           | session tree (or click the session pill)  | config |
 | `Alt-,` / `Alt-.` | previous / next session                   | config |
-| `prefix + Tab`    | last session (toggle)                     | config |
+| `Alt--`           | last session (toggle)                     | config |
+| `prefix + Tab`    | last session (toggle), same as `Alt--`    | config |
 | `prefix + 0`      | jump to `main`, always                    | config |
 | `prefix + @`      | promote this pane to a session of its own | config |
 
@@ -106,7 +108,7 @@ There used to be a `prefix + 1`…`9` too, jumping to the N-th session of a rece
 is gone: the order lived in a file nothing else needed once the bar stopped showing a numbered
 strip and `Alt-s` got its own, different numbering, so a digit was memorised or looked up rather
 than read off anything on screen — and a keybinding that only works memorised isn't much of one.
-`Alt-,` / `Alt-.`, `Alt-s` and `prefix + 0` are what is left to switch sessions without typing a
+`Alt-,` / `Alt-.`, `Alt--`, `Alt-s` and `prefix + 0` are what is left to switch sessions without typing a
 name.
 
 ### Windows
