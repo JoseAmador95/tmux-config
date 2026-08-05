@@ -18,12 +18,13 @@
 # ("the session name in a rounded pill") but the glyphs it named were never actually typed into the
 # string next to it — that comment described intent, not the code, until now.
 #
-# THE ACCENT SHOWS AN ICON, NOT THE INDEX. It used to hold the digit `prefix + <digit>` would land
-# on, which was worth the space back when the strip listed every session and you could compare
-# digits at a glance. With only the current session shown, a lone number has nothing to be compared
-# against — so it is spent on a tmux glyph instead (, cod-terminal_tmux, U+EBC8, verified
-# against Nerd Fonts' own glyphnames.json rather than guessed). `prefix + <digit>` still works
-# exactly as before; it simply is not spelled out on the bar any more.
+# THE ACCENT SHOWS AN ICON, NOT THE INDEX. It used to hold the digit a numbered `prefix +
+# <digit>` jump would land on, which was worth the space back when the strip listed every
+# session and you could compare digits at a glance. With only the current session shown, a lone
+# number had nothing left to be compared against — so it was spent on a tmux glyph instead
+# (, cod-terminal_tmux, U+EBC8, verified against Nerd Fonts' own glyphnames.json rather
+# than guessed). The numbered jump itself is gone now too — see tmux.conf's §2b comment for why
+# — so there is no digit this icon could show even if it wanted to.
 #
 # WHY an option written by a hook instead of a format: tmux's #{S:…} session loop has no index
 # variable, and more basically a format has no way to ask "which client is attached here" the way
@@ -31,11 +32,12 @@
 # status-interval > 0 to ever refresh (see §3b) — and this changes only when a session is created,
 # renamed, killed or switched to, which is exactly what the hooks catch. Reading #{@…} is free.
 #
-# session-order.sh is NOT used here any more. It existed to answer "which position is the current
-# session at", which only mattered while that position was drawn as a digit. Once the digit went,
-# walking the whole ordered list just to re-find the session `cur` already names became a wasted
-# subprocess and a wasted loop — `cur` was already valid, live output. `session-goto.sh` is the
-# script's only remaining reader; see AGENTS.md.
+# There is no session-order.sh any more. It used to answer "which position is the current session
+# at" for two readers: this script (to draw the digit) and the `prefix + <digit>` jump it fed. Once
+# this script stopped drawing a digit, walking that list just to re-find the session `cur` already
+# names became a wasted subprocess and a wasted loop — `cur` was already valid, live output — and
+# once `prefix + <digit>` was removed outright there was no reader left at all, so the file went
+# with it rather than staying as unused ceremony. See tmux.conf's §2b comment and AGENTS.md.
 #
 # Session names are UNTRUSTED here — they are whatever the user typed. status-right expands this
 # option with #{E:…}, so every "#" in a name is doubled: without that, a session called

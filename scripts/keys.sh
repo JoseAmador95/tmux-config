@@ -12,7 +12,6 @@ NAVIGATION
   M-1..9        go to window N                    M-; / M-'   previous / next window
   M-, / M-.     previous / next session           M-s   session tree
   prefix Tab    last session                      prefix 0  always jump to main
-  prefix 1..9   go to the N-th session in that same recent-use order (main is usually 1, not always)
   click the session pill on the right to open the session tree too
 SESSION TREE (M-s) — tmux's own picker, no modes
   1-9 / Enter  switch      j/k  move           C-s  search by name (n/N repeat)
