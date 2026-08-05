@@ -1,24 +1,28 @@
 #!/bin/sh
-# session-strip.sh — render the numbered session list into the @session_strip user option, which
+# session-strip.sh — render the CURRENT session's pill into the @session_strip user option, which
 # status-right reads back with #{E:@session_strip}. Driven by the session hooks in tmux.conf.
 #
+# IT USED TO RENDER ALL NINE. That list was 40 columns wide with only four sessions open, and
+# `status-justify absolute-centre` centres the window list on the TERMINAL without regard for what
+# is in status-right — tmux clips rather than reflows, so the tabs overwrote the right-hand side.
+# The mode indicator was the casualty: with 4 sessions on 90 columns it rendered as the two
+# characters "de", the tail of "tree-mode". Round 4 wrote that off as "KNOWN, ACCEPTED"; it was not.
+#
+# So the bar now says WHERE YOU ARE and the Alt-s tree says where you can go. One pill, ~10 columns,
+# and the collision has room to spare.
+#
+# The digit is kept because it is the one piece of the old strip that earned its space: it tells you
+# which `prefix + <digit>` you are sitting on, which is the anchor for the ones either side of it.
+#
 # WHY an option written by a hook instead of a format: tmux's #{S:…} session loop has no index
-# variable, so the NUMBERS cannot be produced by a format at all — and those numbers are the whole
-# point, because they are what `prefix + <digit>` (session-goto.sh) and the Alt-s popup jump to.
-# The other option, #(…) in status-right, would fork a process on every redraw for a list that only
-# changes when a session is created, renamed, killed or switched to. Reading #{@…} is free.
+# variable, so the NUMBER cannot be produced by a format at all. The other option, #(…) in
+# status-right, would need status-interval > 0 to ever refresh (see §3b) — and this changes only
+# when a session is created, renamed, killed or switched to, which is exactly what the hooks catch.
+# Reading #{@…} is free.
 #
 # Order comes from session-order.sh — `main` first, then most recently used — and NOTHING here
-# sorts. session-goto.sh and session-menu.sh call the same script, which is what makes the digit on
-# screen, the digit you press and the row in the popup the same session. It used to be three
-# separate `| sort` calls; that is three copies of a rule and one edit away from drifting.
-#
-# Because the order is by recent use, the digits MOVE as you switch sessions — this script is
-# re-run by the client-session-changed hook, so the bar is always right, but a digit is a position
-# you are looking at rather than a name you can memorise.
-#
-# Only the first 9 are rendered: `prefix + <digit>` cannot reach a tenth, so a longer strip would
-# be advertising jumps that do not exist.
+# sorts. session-goto.sh calls the same script, which is what keeps the digit shown here and the
+# digit you press pointing at the same session.
 #
 # Session names are UNTRUSTED here — they are whatever the user typed. status-right expands this
 # option with #{E:…}, so every "#" in a name is doubled: without that, a session called
@@ -33,7 +37,6 @@ thm() {
   [ -n "$v" ] || v="$2"
   printf '%s' "$v"
 }
-DIM=$(thm  dim  '#6c6f85')
 CHIP=$(thm chip '#ccd0da')   # the neutral half of the current-session pill
 TEXT=$(thm text '#4c4f69')
 # The COLOURED half is the session's own @pill / @pill_ink, not the global accent: that is what
@@ -53,31 +56,23 @@ PINK=$(tmux display-message -p '#{@pill_ink}' 2>/dev/null) || PINK=''
 cur=$(tmux list-clients -F '#{client_session}' 2>/dev/null | head -n 1)
 [ -n "$cur" ] || cur=$(tmux display-message -p '#S' 2>/dev/null)
 
-# The while loop must not run in a subshell of this script's main body, or the accumulator would be
-# lost; keeping the whole pipeline inside one command substitution is the POSIX way to do that.
+# Find the current session's position in the canonical order, then render just that one pill.
+# The loop still walks the list because the POSITION is the thing being looked up; it stops as soon
+# as it finds the match. Keeping it inside one command substitution is the POSIX way to stop the
+# accumulator being lost to a subshell.
 strip=$(
   "$(cd "$(dirname "$0")" && pwd)/session-order.sh" 2>/dev/null | {
     i=0
     acc=''
     while IFS= read -r s; do
       i=$((i + 1))
-      [ "$i" -le 9 ] || break
+      [ "$s" = "$cur" ] || continue
       esc=$(printf '%s' "$s" | sed 's/#/##/g')
-      if [ "$s" = "$cur" ]; then
-        # The current session is NAMED here again. It used to be a bare number, because the pill on
-        # the left carried the name and having it twice was the complaint; the left pill is now
-        # ssh-only, so this is the one place the name lives. Same two-chip shape as a window tab —
-        # coloured index, neutral name — so the bar has ONE pill vocabulary rather than three.
-        #
-        # The spaces around ${i} are the padding, and they matter: without them the index sits
-        # flush against both edges of the accent, 1 column wide where a window tab's is 3, and the
-        # pill reads as cramped next to the tabs it is supposed to match. The comment above claimed
-        # "same two-chip shape as a window tab" while the code did not — note that the INACTIVE
-        # branch below was padded all along, so this was the odd one out twice over.
-        acc="${acc} #[fg=${PILL},bg=terminal]#[fg=${PINK},bg=${PILL},bold] ${i} #[fg=${TEXT},bg=${CHIP},nobold] ${esc} #[fg=${CHIP},bg=terminal]#[default]"
-      else
-        acc="${acc}#[fg=${DIM},nobold] ${i} ${esc}"
-      fi
+      # Two chips, the same shape as a window tab: the accent holds the index, the name sits on a
+      # neutral chip, and each cap takes the colour of the chip it terminates. The spaces around
+      # ${i} are the padding that makes the accent 3 columns wide, matching a tab's.
+      acc=" #[fg=${PILL},bg=terminal]#[fg=${PINK},bg=${PILL},bold] ${i} #[fg=${TEXT},bg=${CHIP},nobold] ${esc} #[fg=${CHIP},bg=terminal]#[default]"
+      break
     done
     printf '%s' "$acc"
   }
