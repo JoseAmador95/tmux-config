@@ -1,6 +1,6 @@
 #!/bin/sh
 # fzf-style.sh — the ONE definition of how every fzf popup in this config looks. It is *sourced*,
-# not executed: session-menu.sh, palette.sh, keys.sh and ask.sh all pull their flags from here.
+# not executed: palette.sh, keys.sh, urls.sh and ask.sh all pull their flags from here.
 #
 #   . "$(cd "$(dirname "$0")" && pwd)/fzf-style.sh"
 #   set -- $(fzf_style) --prompt 'session '     # deliberately unquoted: see the contract below
@@ -12,7 +12,7 @@
 # somehow launched outside tmux, and they are the Catppuccin Latte values the theme block ships.
 #
 # CONTRACT: fzf_style() prints one flag per line and NONE of its words may contain a space, because
-# every caller word-splits it (POSIX sh has no arrays — the same reason session-menu.sh builds its
+# every caller word-splits it (POSIX sh has no arrays — the same reason the popup scripts build their
 # argv with `set --`). Anything with spaces (--prompt, --header) stays at the call site.
 set -u
 

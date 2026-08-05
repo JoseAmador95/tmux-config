@@ -36,7 +36,7 @@ tints=$(tmux display-message -p '#{E:@thm_ssh_tints}' 2>/dev/null) || tints=''
 [ -n "$tints" ] || tints='#dc8a78:#000000 #dd7878:#000000 #ea76cb:#000000 #8839ef:#ffffff #e64553:#000000 #fe640b:#000000 #df8e1d:#000000 #40a02b:#000000 #179299:#000000 #04a5e5:#000000 #209fb5:#000000 #7287fd:#000000'
 
 # Split the cycle into the argument vector — POSIX sh has no arrays, and `set --` is how this repo
-# indexes a list (see session-menu.sh). Word-splitting is the point here, so no quotes.
+# indexes a list. Word-splitting is the point here, so no quotes.
 # shellcheck disable=SC2086
 set -- $tints
 [ "$#" -gt 0 ] || { printf '%s\t%s\n' '#8839ef' '#ffffff'; exit 0; }
