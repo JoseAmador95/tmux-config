@@ -247,10 +247,11 @@ cap takes the colour of the chip it terminates. That edge inside one object is w
 accent reading as a slab — it is the shape Catppuccin itself uses. Inactive tabs get a quiet card
 instead of floating on the bar.
 
-- **left** — the current mode (prefix held / copy-mode / zoom / synchronized), and in an
-  `ssh_<host>` session the **host** in front of it, in that host's own stable tint, so a remote
-  session can never be mistaken for a local one. Both collapse to nothing when idle, so on a local
-  session the left is empty.
+- **left** — the current mode (prefix held / copy-mode / zoom / synchronized), rounded like every
+  other pill on this bar. It collapses to nothing when idle, so the left is empty outside of one of
+  those four states. There used to be a second pill here too, a dedicated `ssh_<host>` marker — it
+  is gone; a remote session is still unmistakable from the **right**, whose pill wears the host's
+  own tint and shows the session's real name, `ssh_<host>` prefix and all.
 - **centre** — the window list, anchored with `status-justify absolute-centre` so the tabs do not
   slide when the session name changes length. Each window carries an icon for what is running in it.
 - **right** — the session you are on, as a single **rounded** two-chip pill: a tmux glyph in the
