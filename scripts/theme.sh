@@ -78,20 +78,36 @@ DARK_INK='#000000'
 
 # --- roles ---------------------------------------------------------------------------------------
 # The NAMES survive a flavour change because Catppuccin's greys invert with the flavour by design:
-# subtext0 is the quiet foreground and overlay1 the quiet line in every one of them. Only the ink
-# has to be recomputed, which is what the block above is for.
-tmux set -g @thm_accent "#{@thm_blue}"      # pills, active border, prompts
-tmux set -g @thm_urgent "#{@thm_red}"       # the mode pill while the prefix is held
-tmux set -g @thm_dim    "#{@thm_subtext0}"  # inactive tabs, session strip
-tmux set -g @thm_line   "#{@thm_overlay2}"  # inactive pane borders
-tmux set -g @thm_dead   "#{@thm_maroon}"    # a pane whose process exited
-tmux set -g @thm_card   "#{@thm_base}"      # the quiet chip behind an inactive window
-tmux set -g @thm_chip   "#{@thm_surface0}"  # the neutral half of an active pill
-tmux set -g @thm_sel_bg "#{@thm_surface0}"  # copy-mode selection
-tmux set -g @thm_sel_fg "#{@thm_text}"
+# subtext0 is the quiet foreground and overlay2 the quiet line in every one of them. The named
+# colours carry meaning across every visual surface: blue is normal focus, red demands action,
+# yellow asks for attention, green reports activity, and mauve singles out the current search hit.
+# Every role that can become a background carries its own measured ink; Latte in particular cannot
+# share one foreground across this range of luminances.
+tmux set -g @thm_accent         "#{@thm_blue}"      # normal focus and active controls
+tmux set -g @thm_urgent         "#{@thm_red}"       # prefix held, bells, marked copy line
+tmux set -g @thm_attention      "#{@thm_yellow}"    # silence and ordinary search matches
+tmux set -g @thm_activity       "#{@thm_green}"     # new activity in another window
+tmux set -g @thm_current_search "#{@thm_mauve}"     # the active copy-mode search hit
+tmux set -g @thm_dim            "#{@thm_subtext0}"  # inactive tabs, session strip
+tmux set -g @thm_line           "#{@thm_overlay2}"  # inactive pane borders
+tmux set -g @thm_dead           "#{@thm_maroon}"    # a pane whose process exited
+tmux set -g @thm_card           "#{@thm_base}"      # the quiet chip behind an inactive window
+tmux set -g @thm_chip           "#{@thm_surface0}"  # the neutral half of an active pill
+tmux set -g @thm_sel_bg         "#{@thm_surface0}"  # copy-mode selection
+tmux set -g @thm_sel_fg         "#{@thm_text}"
 
-tmux set -g @thm_ink        "$(best_ink "$C_blue")"
-tmux set -g @thm_urgent_ink "$(best_ink "$C_red")"
+tmux set -g @thm_ink                "$(best_ink "$C_blue")"
+tmux set -g @thm_urgent_ink         "$(best_ink "$C_red")"
+tmux set -g @thm_attention_ink      "$(best_ink "$C_yellow")"
+tmux set -g @thm_activity_ink       "$(best_ink "$C_green")"
+tmux set -g @thm_current_search_ink "$(best_ink "$C_mauve")"
+
+# These three options are colour-typed rather than style-typed: tmux rejects a format such as
+# #{E:@thm_accent} here. Publish the resolved palette literals on every flavour run instead, so
+# clock mode and the pane selector change with the rest of the theme.
+tmux set-window-option -g clock-mode-colour "$C_blue"
+tmux set-option -g display-panes-active-colour "$C_blue"
+tmux set-option -g display-panes-colour "$C_overlay2"
 
 # ssh_<host> pill tints: the 14 colours palette.json flags as accents, minus blue (every LOCAL
 # session wears it) and red (the prefix), which leaves exactly 12 — so a remote pill can never be
@@ -103,6 +119,21 @@ for n in rosewater flamingo pink mauve maroon peach yellow green teal sky sapphi
   tints="${tints}${tints:+ }${c}:$(best_ink "$c")"
 done
 tmux set -g @thm_ssh_tints "$tints"
+
+# @pill and @pill_ink are materialised per-session values, not live formats, so a flavour switch
+# would otherwise leave every existing session wearing the old palette until it was renamed.
+# Keep the actual colour policy in session-color.sh, then rebuild only the current-session strip.
+# session-save.sh is deliberately absent: repainting the UI does not change the restart roster.
+SCRIPTS=$(cd "$(dirname "$0")" && pwd)
+tmux list-sessions -F '#{session_name}' 2>/dev/null | while IFS= read -r s; do
+  [ -n "$s" ] || continue
+  "$SCRIPTS/session-color.sh" "$s" | {
+    IFS='	' read -r bg ink
+    [ -n "$bg" ] && tmux set-option -t "$s" @pill "$bg"
+    [ -n "$ink" ] && tmux set-option -t "$s" @pill_ink "$ink"
+  }
+done
+"$SCRIPTS/session-strip.sh"
 
 # --- plugin palettes -------------------------------------------------------------------------------
 # tmux-fuzzback takes its fzf colours as one static option string, which would freeze it to whatever

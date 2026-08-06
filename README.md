@@ -26,7 +26,7 @@ up for you. `bootstrap.sh` warns if it is somewhere else.
 
 | Need               | Why                                                                                                                                                       |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **tmux ≥ 3.4**     | the floor. `bootstrap.sh` refuses below it. Automatic light/dark needs **3.6** (optional).                                                                |
+| **tmux ≥ 3.4**     | the floor; the config works throughout. Automatic light/dark plus modal scrollbar/copy-position styling need **3.6**; the tree-preview accent needs **3.7**. Older supported versions keep tmux's defaults for those optional surfaces. |
 | **`fzf` ≥ 0.59**   | not optional — `Alt-Space`, `prefix + ?`, `prefix + e` and `prefix + u` are fzf popups, with no fallback. (`Alt-s` is tmux's own tree and needs nothing.) |
 | **A Nerd Font**    | the bar's pill caps and per-window icons.                                                                                                                 |
 | **A UTF-8 locale** | with `LC_CTYPE=POSIX` tmux silently drops the Nerd Font glyphs and the pills lose their rounded ends.                                                     |
@@ -122,6 +122,10 @@ without typing a name.
 | `prefix + <` / `>` | move this window left / right        | config |
 | `prefix + N`       | alert me when this window goes quiet | config |
 
+Each window tab shows at most one alert marker, with this priority: red `!` bell, yellow `◆`
+silence, green `●` activity; **bell > silence > activity**. `prefix + N` arms silence monitoring
+for the current window, so its yellow marker appears when that window goes quiet.
+
 ### Panes
 
 | Key                | Action                                           | Owner  |
@@ -139,10 +143,12 @@ that turned invisible without a matching background colour, then a same-colour-f
 fixed the visibility but lost the thin line entirely — were both tried and reverted in favour of this
 smaller change.
 
-Each pane's frame (`pane-border-status top`) shows its index, an icon for whatever is actually
-running in **that pane** — reusing `@wicon`, the same per-command icon already on the window tabs —
-and the window name. Two panes in the same window can and do show different icons, since each
-pane's own `#{pane_current_command}` drives it independently of the window's.
+Each live pane's frame (`pane-border-status top`) shows its index, the shared per-command `@wicon`,
+the command, and the current directory's basename truncated to 20 characters. Two panes in the
+same window can and do show different icons and commands because each pane's own
+`#{pane_current_command}` drives the label; an `ssh` pane says `remote` instead of showing its
+misleading local cwd. The active label is blue and bold. A dead pane replaces that context with its
+exit status and `prefix + R` revive key.
 
 ### Copy & clipboard
 
@@ -229,6 +235,9 @@ at all: they need `status-interval > 0` and `status-right`, which the session st
 `Alt-s` opens **`choose-tree`, tmux's own session picker**. No modes, no filtering to escape from,
 and no process spawned per keystroke.
 
+On **tmux ≥ 3.7**, the tree's preview label uses the theme's blue accent. Older supported versions
+keep tmux's default preview styling; the picker itself works unchanged.
+
 | Key               |                                                                                  |
 | ----------------- | -------------------------------------------------------------------------------- |
 | `1`…`9`           | switch to that session immediately — the number is shown in brackets on the left |
@@ -272,12 +281,15 @@ accent reading as a slab — it is the shape Catppuccin itself uses. Inactive ta
 instead of floating on the bar.
 
 - **left** — the current mode (prefix held / copy-mode / zoom / synchronized), rounded like every
-  other pill on this bar. It collapses to nothing when idle, so the left is empty outside of one of
-  those four states. There used to be a second pill here too, a dedicated `ssh_<host>` marker — it
-  is gone; a remote session is still unmistakable from the **right**, whose pill wears the host's
-  own tint and shows the session's real name, `ssh_<host>` prefix and all.
+  other pill on this bar. Holding the prefix makes the combined pill red; every other displayed
+  mode remains blue. It collapses to nothing when idle, so the left is empty outside of one of those
+  four states. There used to be a second pill here too, a dedicated `ssh_<host>` marker — it is gone;
+  a remote session is still unmistakable from the **right**, whose pill wears the host's own tint
+  and shows the session's real name, `ssh_<host>` prefix and all.
 - **centre** — the window list, anchored with `status-justify absolute-centre` so the tabs do not
-  slide when the session name changes length. Each window carries an icon for what is running in it.
+  slide when the session name changes length. Each window carries an icon for what is running in it
+  and at most one alert marker: red `!` bell, yellow `◆` silence, or green `●` activity, in
+  **bell > silence > activity** priority.
 - **right** — the session you are on, as a single **rounded** two-chip pill: a tmux glyph in the
   accent, the name in a neutral chip. It used to hold the session's number instead of the icon, back
   when the whole strip was visible and a digit meant something to compare; with only one pill left
@@ -294,6 +306,10 @@ tints; **switching is one option and a re-run**, from the `Alt-Space` palette or
 :set -g @thm_flavor mocha ; run-shell "~/.config/tmux/scripts/theme.sh"
 ```
 
+Every re-run refreshes existing session pills and the current session strip, plus the colour-typed
+clock and pane-selector options. Format-based surfaces follow the same roles, including the tree
+preview accent on tmux ≥ 3.7.
+
 On **tmux ≥ 3.6** it does that by itself. tmux 3.6 added mode 2031, so it asks the terminal which
 theme it is on and re-asks when the OS flips; the `client-light-theme` / `client-dark-theme` hooks
 switch the flavour to match. This is what `tmux-dark-notify` exists to do, minus the plugin and the
@@ -301,11 +317,11 @@ daemon. On older tmux the block is skipped and you switch by hand.
 
 ### Contrast
 
-The pill text is _measured_, not written down. Every pill is text-on-colour, and the right
-foreground flips both with the flavour and within it — white reads on Latte's blue (4.91:1) and not
-on Mocha's (2.10:1), and inside Latte it reads on blue but not on yellow (2.62:1). `theme.sh`
-computes each one, so a palette edit cannot silently produce an illegible pill. All 56 pairings
-across the four flavours measure ≥ 4.5:1.
+The pill text and the inks on coloured search backgrounds are _measured_, not written down. The
+right foreground flips both with the flavour and within it — white reads on Latte's blue (4.91:1)
+and not on Mocha's (2.10:1), and inside Latte it reads on blue but not on yellow (2.62:1).
+`theme.sh` computes each one, so a palette edit cannot silently produce an illegible surface. All
+56 Catppuccin accent pairings across the four flavours measure ≥ 4.5:1.
 
 Three places deliberately depart from upstream `catppuccin/tmux`, all for legibility — which
 Catppuccin's own style guide asks for over fidelity. Pill text is `#ffffff`, not `crust`, because
@@ -333,6 +349,12 @@ module forces the timer on, and why none of them fit a bar whose `status-right` 
 
 `prefix + [`, `Alt-i`, or scroll up. `v` selects; `y` / `Enter` / `Ctrl-C` / mouse-drag-release copy
 **without** leaving copy mode, and the selection also reaches the system clipboard. `q` / `Esc` exits.
+
+Searches paint ordinary matches yellow and the current match mauve; the copy-mode mark is red. On
+**tmux ≥ 3.6**, a compact position card shows the scroll/search context and a modal blue scrollbar
+appears on the right **only in copy/view mode**. That scrollbar temporarily consumes one column, so
+the pane narrows and reflows while the mode is active, then returns to its normal width on exit.
+tmux 3.4 and 3.5 keep the default position UI and have no scrollbar.
 
 `d` / `u` jump ten lines, like vim's `10j` / `10k` — deliberately not half a page, which `C-d` /
 `C-u` already do. They exist because overshooting the bottom with `C-d` sends the extra keypress
