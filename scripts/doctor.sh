@@ -132,7 +132,7 @@ parse_probe() (
   probe_sockets=$probe/sockets
   probe_sock=doctor-$$
   # Invoked indirectly by trap.
-  # shellcheck disable=SC2329
+  # shellcheck disable=SC2317,SC2329
   probe_cleanup() {
     HOME=$probe_home XDG_STATE_HOME=$probe_state TMUX_TMPDIR=$probe_sockets \
       tmux -L "$probe_sock" kill-server 2>/dev/null || true

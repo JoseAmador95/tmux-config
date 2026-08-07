@@ -10,6 +10,12 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-24.04
+    # A UTF-8 locale is a hard requirement of this config, not a preference: with LC_CTYPE=POSIX
+    # tmux silently drops the Nerd Font glyphs, and doctor.sh fails the run for it. Declare it here
+    # rather than inheriting whatever the runner image happens to set.
+    env:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
     steps:
       - name: Check out pinned plugins
         uses: actions/checkout@v4
