@@ -19,8 +19,15 @@ set -u
 host="${1:-}"
 [ -n "$host" ] || exec "${SHELL:-/bin/sh}" -l   # no host → local shell, NEVER SSH
 
+case "$host" in
+  -*|*[!A-Za-z0-9._@-]*)
+    printf 'ssh-host.sh: invalid host: %s\n' "$host" >&2
+    exit 64
+    ;;
+esac
+
 # The pane IS the connection: on exit/logout the window closes, like a normal shell.
-# `$host` unquoted → word-splitting on purpose, allows values like "-A host".
+# The validated host is one argv element. Connection options belong in ~/.ssh/config, where they
+# cannot turn a session name or shell string into extra command-line arguments.
 # `-t` forces a PTY so full-screen remote programs behave.
-# shellcheck disable=SC2086
-exec ssh -t $host
+exec ssh -t "$host"

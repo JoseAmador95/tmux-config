@@ -1,15 +1,16 @@
 #!/bin/sh
-# session-created.sh — re-applies the per-session state that is DERIVED FROM THE SESSION NAME.
+# session-created.sh — re-apply protected and visual per-session state.
 # Wired to the `session-created` and `session-renamed` hooks and run once when the config loads.
 #
 # Two jobs, for every live session:
 #   1) SSH shield (second layer): for every "ssh_<host>" session set a per-session
-#      `default-command` that enters the host over SSH — even sessions NOT created by tssh
-#      (e.g. `tmux new -s ssh_foo`), so a new window or split can never fall back to a local shell.
+#      `default-command` that enters the host over SSH. tssh stores the exact destination in
+#      session-scoped @ssh_host because a display-safe session name is lossy; sessions created
+#      manually (e.g. `tmux new -s ssh_foo`) fall back to the host encoded in their name.
 #      `default-command` is a SESSION option: it applies to new-window AND split-window and does
 #      NOT leak to other (local) sessions. NEVER set it with `set -g` — every local session would SSH.
 #   2) Per-session colour: publish this name's deterministic colour (session-color.sh) as the
-#      session-scoped `@pill` user option, which the global `status-left` in tmux.conf reads.
+#      session-scoped `@pill` user option, which status-right reads in each client's session.
 #
 # WHY IT TAKES NO ARGUMENTS. The hooks used to pass `#{hook_session_name}`, which tmux interpolates
 # RAW into the shell command line — so a session called "my proj" reached the script as $1="my"
@@ -24,9 +25,9 @@
 # existed in two places that had to be kept identical. Publishing one value instead means the
 # pill's shape lives only in tmux.conf.
 #
-# WHY it must be idempotent: it runs on rename too, and renaming crosses the ssh_ boundary in both
-# directions — so a session renamed AWAY from ssh_* has to have its default-command removed, or it
-# would keep SSHing into a host whose name is no longer anywhere on screen.
+# WHY it must be idempotent: it runs on rename too. A rename inside ssh_* is cosmetic and retains
+# @ssh_host; renaming AWAY from ssh_* removes both that metadata and default-command, or the now
+# local-looking session would keep SSHing into a host whose name is no longer anywhere on screen.
 set -u
 
 SCRIPTS=$(cd "$(dirname "$0")" && pwd)
@@ -36,17 +37,19 @@ apply() {
 
   case "$s" in
     ssh_?*)
-      host=${s#ssh_}
+      # tssh metadata is authoritative across cosmetic ssh_* renames. A manually-created session
+      # has no metadata, so its visible suffix remains the non-persisted fallback.
+      host=$(tmux show-option -qv -t "$s" @ssh_host 2>/dev/null || true)
+      [ -n "$host" ] || host=${s#ssh_}
       # default-command is a SHELL command string, so the host goes through a shell a second time.
-      # Rather than quote it and hope, refuse anything that is not plausibly a host: a name is
-      # whatever the user typed into the rename prompt.
+      # Refuse option-like or punctuated values, then put the one validated argument in quotes.
       case "$host" in
-        *[!A-Za-z0-9._@-]*)
+        ''|-*|*[!A-Za-z0-9._@-]*)
           tmux display-message "ssh shield: '$s' has an unusable host name; no default-command set"
           tmux set-option -u -t "$s" default-command 2>/dev/null || true
           ;;
         *)
-          tmux set-option -t "$s" default-command "$SCRIPTS/ssh-host.sh $host"
+          tmux set-option -t "$s" default-command "$SCRIPTS/ssh-host.sh '$host'"
           ;;
       esac
       ;;
@@ -55,6 +58,7 @@ apply() {
       # The flags must stay separate: `-tu <name>` is parsed as `-t u`, which silently targets a
       # session called "u" and leaves the real default-command in place.
       tmux set-option -u -t "$s" default-command 2>/dev/null || true
+      tmux set-option -u -t "$s" @ssh_host 2>/dev/null || true
       ;;
   esac
 
@@ -74,9 +78,6 @@ tmux list-sessions -F '#{session_name}' 2>/dev/null | while IFS= read -r s; do
   [ -n "$s" ] && apply "$s"
 done
 
-# The status bar's session strip is derived from the same list, so refresh it here too.
-"$SCRIPTS/session-strip.sh"
-
-# And the roster of open sessions, for the same reason: this script already runs on create and on
+# Save the roster of open sessions too: this script already runs on create and on
 # rename, which are two of the four events that change it.
 "$SCRIPTS/session-save.sh"

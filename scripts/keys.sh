@@ -2,8 +2,11 @@
 # keys.sh — which-key style cheatsheet of the custom bindings, in a searchable fzf popup. Replaces
 # the raw `list-keys` of `prefix + ?`. Reference only: type to filter, Esc closes.
 set -u
+# shellcheck source=scripts/fzf-style.sh
 . "$(cd "$(dirname "$0")" && pwd)/fzf-style.sh"   # --reverse + the shared --color, from the theme
 
+# fzf_style's documented contract is one whitespace-free option per line; splitting is wanted.
+# shellcheck disable=SC2046
 cat <<'EOF' | fzf $(fzf_style) --info=inline --no-sort --prompt 'keys ' \
     --header 'filter · Esc closes'
 NAVIGATION
@@ -19,14 +22,17 @@ SESSION TREE (M-s) — tmux's own picker, no modes
   x  kill session          t  tag   X  kill tagged        q / Esc  close
   rename & create a session live in the M-Space palette
 PANES
+  prefix " / %   split vertically / horizontally (same lock as M-n)
   prefix H/J/K/L   resize                         prefix z  zoom (default)
   prefix R         revive dead pane               prefix x  kill pane (default)
 COPY
   M-i           enter copy-mode                    prefix [  enter copy-mode (tmux default)
   prefix y      copy the WHOLE scrollback          prefix Y  copy only the last output
   v / y         (copy-mode) select / copy          C-c    (copy-mode) copy
+  mouse-click   (copy-mode) move cursor to the clicked cell
+  mouse-drag-release  (copy-mode) finish a mouse selection and copy it
   d / u         (copy-mode) jump 10 lines down / up
-  o / C-o       (copy-mode) open selection / open it in $EDITOR
+  o / C-o       (copy-mode) system-open selection / open it in $EDITOR
 FIND / GRAB
   prefix e      grab a path/URL/token off screen   prefix F  search scrollback, jump to hit
   prefix f      label every match on screen, press its letter to copy
@@ -35,7 +41,8 @@ FIND / GRAB
   s             (copy-mode) easy-motion jump
 WINDOWS & SESSIONS
   prefix < / >  move this window left / right       prefix @  promote this pane to a session
-  prefix P      toggle logging this pane to a file  prefix N  alert when this window goes quiet
+  prefix P      safe log: ~/tmux-<session>-wN-pID.log
+  prefix N      alert when this window goes quiet
 GENERAL
   M-Space       command palette                    prefix :  command prompt (tmux)
   prefix ?      this help                          prefix r  reload config

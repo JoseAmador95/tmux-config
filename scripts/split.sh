@@ -1,15 +1,70 @@
 #!/bin/sh
-# split.sh — Zellij-like split for M-n: splits the LONGER axis so repeated splits spiral like
-# Zellij's dynamic tiling (fibonacci feel). A wide pane splits left/right (-h), a tall pane splits
-# top/bottom (-v). The @no_split lock is enforced by the binding (tmux.conf), not here. Launched
-# via run-shell, so the tmux commands target the active pane (like scripts/promote.sh).
+# split.sh — the single split entrypoint for bindings and the command palette.
+#
+# Usage: split.sh <pane-id> [auto|vertical|horizontal]
+# `auto` splits the longer visual axis for a fibonacci-like spiral. Every mode enforces the
+# window-scoped @no_split lock here, so adding a new caller cannot accidentally bypass it.
 set -u
-w=$(tmux display-message -p '#{pane_width}')
-h=$(tmux display-message -p '#{pane_height}')
-cwd=$(tmux display-message -p '#{pane_current_path}')
-# Cells are ~2x taller than wide, so weigh height x2 before comparing.
-if [ "${w:-0}" -gt "$(( ${h:-0} * 2 ))" ]; then
-  tmux split-window -h -c "$cwd"
-else
-  tmux split-window -v -c "$cwd"
+
+usage() {
+  printf 'usage: split.sh <pane-id> [auto|vertical|horizontal]\n' >&2
+  exit 64
+}
+
+case "$#" in
+  1|2) ;;
+  *) usage ;;
+esac
+
+pane=$1
+mode=${2:-auto}
+digits=${pane#%}
+case "$pane:$digits" in
+  %*:*) ;;
+  *) usage ;;
+esac
+case "$digits" in
+  ''|*[!0-9]*) usage ;;
+esac
+case "$mode" in
+  auto|vertical|horizontal) ;;
+  *) usage ;;
+esac
+
+actual=$(tmux display-message -p -t "$pane" '#{pane_id}' 2>/dev/null) || {
+  printf 'split.sh: pane not found: %s\n' "$pane" >&2
+  exit 1
+}
+[ "$actual" = "$pane" ] || {
+  printf 'split.sh: pane not found: %s\n' "$pane" >&2
+  exit 1
+}
+
+locked=$(tmux display-message -p -t "$pane" '#{@no_split}' 2>/dev/null || true)
+if [ -n "$locked" ] && [ "$locked" != 0 ]; then
+  tmux display-message 'this pane is locked (no splits)'
+  exit 1
 fi
+
+cwd=$(tmux display-message -p -t "$pane" '#{pane_current_path}') || exit
+
+case "$mode" in
+  horizontal)
+    direction=-h
+    ;;
+  vertical)
+    direction=-v
+    ;;
+  auto)
+    width=$(tmux display-message -p -t "$pane" '#{pane_width}') || exit
+    height=$(tmux display-message -p -t "$pane" '#{pane_height}') || exit
+    # Cells are approximately twice as tall as wide, so weigh height before comparing.
+    if [ "$width" -gt "$((height * 2))" ]; then
+      direction=-h
+    else
+      direction=-v
+    fi
+    ;;
+esac
+
+tmux split-window -t "$pane" "$direction" -c "$cwd"

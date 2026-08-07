@@ -7,12 +7,13 @@
 # the label fzf shows and filters (--with-nth 2). Runs inside display-popup -E; the popup closes
 # on run. Fills the gap documented in README/AGENTS/bootstrap ("Alt-Space command palette").
 set -u
+# shellcheck source=scripts/fzf-style.sh
 . "$(cd "$(dirname "$0")" && pwd)/fzf-style.sh"   # --reverse + the shared --color, from the theme
 
 items() {   # "tmux command<TAB>label" (printf recycles the format per pair)
   printf '%s\t%s\n' \
-    'split-window -v -c "#{pane_current_path}"'                 'split down' \
-    'split-window -h -c "#{pane_current_path}"'                 'split right' \
+    'run-shell "~/.config/tmux/scripts/split.sh '\''#{pane_id}'\'' vertical"'   'split down' \
+    'run-shell "~/.config/tmux/scripts/split.sh '\''#{pane_id}'\'' horizontal"' 'split right' \
     'new-window -c "#{pane_current_path}"'                      'new window' \
     'resize-pane -Z'                                            'zoom pane (toggle)' \
     'respawn-pane'                                              'revive pane (respawn)' \
@@ -33,6 +34,8 @@ items() {   # "tmux command<TAB>label" (printf recycles the format per pair)
     'set -g @thm_flavor mocha     \; run-shell "~/.config/tmux/scripts/theme.sh"'     'theme: mocha (dark)'
 }
 
+# fzf_style's contract intentionally word-splits; the single-quoted bind is shell source for fzf.
+# shellcheck disable=SC2046,SC2016
 items | fzf $(fzf_style) \
   --delimiter '\t' --with-nth 2 --info=inline --cycle \
   --prompt '> ' --header 'filter · Enter runs · Esc cancels' \
