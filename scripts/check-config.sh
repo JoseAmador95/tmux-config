@@ -79,7 +79,7 @@ SOCKET_NUMBER=0
 ACTIVE_SOCKET=''
 
 # Invoked indirectly by trap.
-# shellcheck disable=SC2329
+# shellcheck disable=SC2317,SC2329
 cleanup() {
   for socket in $ACTIVE_SERVERS; do
     "$TMUX_REAL" -L "$socket" kill-server 2>/dev/null || true

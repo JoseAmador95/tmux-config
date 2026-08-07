@@ -63,7 +63,7 @@ isolated_tmux() (
 )
 
 # Invoked indirectly by trap.
-# shellcheck disable=SC2329
+# shellcheck disable=SC2317,SC2329
 cleanup() {
   isolated_tmux -S "$CFG" kill-server 2>/dev/null || :
   isolated_tmux -S "$VAN" kill-server 2>/dev/null || :
