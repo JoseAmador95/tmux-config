@@ -44,25 +44,25 @@ unset -f _t_raise_nofile 2>/dev/null
 # connections at hosts that may be down, possibly with N 2FA prompts, before you have typed
 # anything. They are listed instead — `tssh <host>` is one keystroke.
 #
-# The third roster field is a window-name signature, not a window list to rebuild: "agent editor
-# git term" means the session came from `tp`, so it is rebuilt through the same sessions/dev.conf
-# that built it originally rather than coming back as a bare shell.
+# The third roster field is the explicit session layout. `dev` means the session came from `tp`,
+# so it is rebuilt through the same sessions/dev.conf that built it originally rather than coming
+# back as a bare shell. The old window-name signature remains readable for one-way migration.
 _t_restore() {
   [ -n "${TMUX:-}" ] && return 0
   tmux has-session 2>/dev/null && return 0
   local roster="${XDG_STATE_HOME:-$HOME/.local/state}/tmux/roster"
   [ -r "$roster" ] || return 0
 
-  local name dir wins remote=""
-  while IFS=$'\t' read -r name dir wins; do
+  local name dir layout remote=""
+  while IFS=$'\t' read -r name dir layout; do
     [ -n "$name" ] || continue
     case "$name" in
       ssh_*) remote="$remote ${name#ssh_}"; continue ;;
     esac
     tmux has-session -t "=$name" 2>/dev/null && continue
     [ -d "${dir:-}" ] || dir="$HOME"
-    case "$wins" in
-      "agent editor git term"*)
+    case "$layout" in
+      dev|"agent editor git term"*)
         local SESS="$name" DIR="$dir"
         . "$HOME/.config/tmux/sessions/dev.conf" ;;
       *)
@@ -95,14 +95,14 @@ tp() {
 tcwd() { tp "$@"; }   # backwards-compatible alias (name kept for muscle memory)
 
 # tssh <host> — dedicated session for an SSH host: every pane/window enters the host.
-# Name = "ssh_" + host sanitized ([^A-Za-z0-9_-] → _). The first pane enters via ssh-host.sh;
-# the session-created hook then marks the session so new windows/splits also re-enter the host.
+# scripts/ssh-session.sh validates the host, derives the safe session name, and stores the exact
+# target in session-scoped @ssh_host. The first pane enters via ssh-host.sh; the session-created
+# hook then marks the session so new windows/splits also re-enter that exact host.
 # Per-host options (user, port, -A) belong in ~/.ssh/config, not here.
 tssh() {
-  [ -n "${1:-}" ] || { echo "usage: tssh <host|~/.ssh/config alias>"; return 1; }
-  local host="$1" sess="ssh_${1//[^A-Za-z0-9_-]/_}"
-  local sh="$HOME/.config/tmux/scripts/ssh-host.sh"
-  tmux has-session -t "=$sess" 2>/dev/null || tmux new-session -d -s "$sess" "$sh $host"
+  [ "$#" -eq 1 ] || { echo "usage: tssh <host|~/.ssh/config alias>" >&2; return 1; }
+  local sess
+  sess=$("$HOME/.config/tmux/scripts/ssh-session.sh" "$1") || return
   if [ -n "${TMUX:-}" ]; then tmux switch-client -t "=$sess"; else tmux attach -t "=$sess"; fi
 }
 

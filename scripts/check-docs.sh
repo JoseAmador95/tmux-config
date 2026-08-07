@@ -1,121 +1,237 @@
 #!/bin/sh
-# check-docs.sh — assert every key binding this config defines is documented in BOTH README.md and
-# scripts/keys.sh.
+# check-docs.sh — assert every effective binding this config adds or overrides is documented in
+# BOTH README.md and scripts/keys.sh.
 #
-# ONE DIRECTION ONLY: it catches a key that exists but is undocumented, not a doc entry for a key
-# that no longer exists. The reverse needs parsing prose back into key names, and a wrong guess
-# there would fail the build over a sentence. Deleting a binding still means editing both docs by
-# hand. Run it with plugins/ present, or the plugin-owned keys are simply absent and pass silently.
+# This is deliberately one-directional: deleting a binding still means removing its prose by hand.
+# Parsing arbitrary prose back into a complete key map would create false build failures. What this
+# script does prove is the useful direction: no configured key can ship without appearing in both
+# user-facing lists.
 #
-# A SECOND BLIND SPOT, found the hard way: keys() below diffs by KEY NAME ONLY, not key -> command
-# (unlike the manual verification method this repo actually uses when a round touches bindings —
-# see the git log for "compare key -> COMMAND, never by which keys exist"). So overriding a key tmux
-# ALREADY binds by default — prefix + 0 was `select-window -t :=0` until it became a jump-to-main
-# command — is invisible here: the name "0" exists on both sides of the vanilla-vs-ours diff, so it
-# never reaches the undocumented-key check at all, whether or not it is actually documented. This
-# script would have reported clean even if prefix + 0 had shipped with no docs anywhere. Passing
-# check-docs.sh is not proof a key like that is documented; check by hand.
+# HOW IT DECIDES what is "ours". Two fresh isolated servers are started from /dev/null. The config
+# is sourced into one of them and each table is compared as key<TAB>command pairs. Comparing the
+# command is load-bearing: prefix + 0 already existed in vanilla tmux, so a key-name-only diff once
+# missed that this config had replaced its command entirely. The configured server uses source-file
+# rather than 'tmux -f ... new-session -d', because the latter hides parse errors when no client is
+# attached to receive them.
 #
-# This is a lint, not a runtime helper: nothing in tmux.conf calls it. Run it after touching keys.
-#   ./scripts/check-docs.sh            # exit 0 = in sync
+# Both servers use exact sockets in a fresh temporary directory and receive the same unique SHELL
+# symlink, so a host that already uses Zsh cannot hide an override back to /bin/zsh. HOME exposes
+# only the checkout's tracked tmux.conf, scripts and plugins; it deliberately has neither local.conf
+# nor the private tmux-work tree. Every XDG directory and TMUX_TMPDIR is temporary too, so hooks
+# cannot replace the user's roster, read machine-specific state or reach the live tmux server.
 #
-# WHY IT EXISTS: keys.sh is the `prefix + ?` popup and README has the long table. Two hand-kept
-# copies of the same list drift the first time a plugin moves a key, and the drift is invisible —
-# the popup still opens, it just lies. Plugins made this a live risk: five of them bind keys now.
-#
-# HOW IT DECIDES what is "ours": it diffs against a tmux started with `-f /dev/null`, so tmux's own
-# defaults are excluded and only what this config adds or overrides is checked.
-#
-# The docs spell keys for humans — `Alt-h/j/k/l`, `Alt-←`, `prefix + H/J/K/L` — while tmux says
-# M-h, M-Left, H. Both sides are normalised before comparing, and grouped spellings are expanded,
-# or this would report a wall of false failures (it did, which is why the normalising is here).
+# The docs spell keys for humans — Alt-h/j/k/l, M-1..9, prefix H/J/K/L, mouse-click — while tmux
+# prints M-h, M-1, H and MouseDown1Pane. doc_spelling() lists the accepted aliases explicitly; no
+# extended-regexp sed syntax is used, so the lint behaves the same with macOS's POSIX tools.
 set -u
 
 cd "$(dirname "$0")/.." || exit 1
 [ -f tmux.conf ] || { echo "check-docs: run from the repo"; exit 1; }
+command -v tmux >/dev/null 2>&1 || { echo "check-docs: tmux is not in PATH"; exit 1; }
 
-SOCK="docchk$$"
-VAN="docvan$$"
-TMP="${TMPDIR:-/tmp}/check-docs.$$"
-mkdir -p "$TMP" || exit 1
-cleanup() { tmux -L "$SOCK" kill-server 2>/dev/null; tmux -L "$VAN" kill-server 2>/dev/null; rm -rf "$TMP"; }
-trap cleanup EXIT INT TERM
+ROOT=$(pwd -P)
+# Unix-domain socket paths are short (104 bytes on macOS), so do not nest this under macOS's long
+# per-user $TMPDIR. /tmp is private after mktemp creates the directory and works on macOS/Linux.
+TMP=$(mktemp -d "/tmp/tmux-docs.XXXXXX") || {
+  echo "check-docs: cannot create temporary directory"
+  exit 1
+}
+VAN="$TMP/vanilla.sock"
+CFG="$TMP/configured.sock"
+CHECK_HOME="$TMP/home"
+CHECK_XDG_CONFIG="$TMP/xdg/config"
+CHECK_XDG_CACHE="$TMP/xdg/cache"
+CHECK_XDG_DATA="$TMP/xdg/data"
+CHECK_STATE="$TMP/xdg/state"
+CHECK_RUNTIME="$TMP/xdg/runtime"
+CHECK_TMUX_RUNTIME="$TMP/tmux-runtime"
+CHECK_SHELL="$TMP/native-shell"
 
-tmux -f /dev/null -L "$VAN"  new-session -d 2>/dev/null || { echo "check-docs: cannot start tmux"; exit 1; }
-tmux -f tmux.conf -L "$SOCK" new-session -d 2>/dev/null || { echo "check-docs: tmux.conf failed to load"; exit 1; }
+isolated_tmux() (
+  HOME="$CHECK_HOME"
+  SHELL="$CHECK_SHELL"
+  XDG_CONFIG_HOME="$CHECK_XDG_CONFIG"
+  XDG_CACHE_HOME="$CHECK_XDG_CACHE"
+  XDG_DATA_HOME="$CHECK_XDG_DATA"
+  XDG_STATE_HOME="$CHECK_STATE"
+  XDG_RUNTIME_DIR="$CHECK_RUNTIME"
+  TMUX_TMPDIR="$CHECK_TMUX_RUNTIME"
+  export HOME SHELL XDG_CONFIG_HOME XDG_CACHE_HOME XDG_DATA_HOME XDG_STATE_HOME
+  export XDG_RUNTIME_DIR TMUX_TMPDIR
+  unset TMUX
+  exec tmux "$@"
+)
 
-keys() {   # keys() <socket> <table> -> one key per line
-  # list-keys QUOTES a key that needs it, so `bind -n "M-;"` comes back as the five characters
-  # "M-;" — quotes included. Strip them, or every quoted key reports as undocumented no matter what
-  # the docs say. (Found by this script the first time a quoted key was added.)
-  tmux -L "$1" list-keys -T "$2" 2>/dev/null |
-    awk -v t="$2" '{for (i=1;i<=NF;i++) if ($i==t) { k=$(i+1); gsub(/^"|"$/,"",k); print k; break }}' |
-    sort -u
+# Invoked indirectly by trap.
+# shellcheck disable=SC2329
+cleanup() {
+  isolated_tmux -S "$CFG" kill-server 2>/dev/null || :
+  isolated_tmux -S "$VAN" kill-server 2>/dev/null || :
+  case "$TMP" in
+    /tmp/tmux-docs.*|/private/tmp/tmux-docs.*) rm -rf "$TMP" ;;
+  esac
+}
+trap cleanup 0
+trap 'exit 1' 1 2 3 15
+
+mkdir -p "$CHECK_HOME/.config/tmux" "$CHECK_XDG_CONFIG" "$CHECK_XDG_CACHE" \
+  "$CHECK_XDG_DATA" "$CHECK_STATE" "$CHECK_RUNTIME" "$CHECK_TMUX_RUNTIME" || exit 1
+chmod 700 "$CHECK_HOME" "$CHECK_HOME/.config" "$CHECK_HOME/.config/tmux" \
+  "$CHECK_XDG_CONFIG" "$CHECK_XDG_CACHE" "$CHECK_XDG_DATA" "$CHECK_STATE" \
+  "$CHECK_RUNTIME" "$CHECK_TMUX_RUNTIME" || exit 1
+ln -s /bin/sh "$CHECK_SHELL" || exit 1
+[ -x "$CHECK_SHELL" ] || { echo "check-docs: temporary shell is not executable"; exit 1; }
+# Do not link the checkout directory itself: a developer's ignored local.conf would then become
+# part of the check. These are the only tracked paths tmux.conf needs while it is being sourced.
+for path in tmux.conf scripts plugins; do
+  ln -s "$ROOT/$path" "$CHECK_HOME/.config/tmux/$path" || exit 1
+done
+
+start_out=$(isolated_tmux -S "$VAN" -f /dev/null new-session -d -s doc-vanilla \
+  'exec sleep 300' 2>&1) || {
+  echo "check-docs: cannot start baseline tmux"
+  printf '%s\n' "$start_out" | sed 's/^/  /'
+  exit 1
+}
+start_out=$(isolated_tmux -S "$CFG" -f /dev/null new-session -d -s doc-configured \
+  'exec sleep 300' 2>&1) || {
+  echo "check-docs: cannot start configured tmux"
+  printf '%s\n' "$start_out" | sed 's/^/  /'
+  exit 1
 }
 
-# Expand the grouped spellings the docs use into one token per line, so `Alt-h/j/k/l` matches a
-# lookup for `Alt-j`. Everything is lowercased; matching is substring, which is why the tokens are
-# kept long enough to be unambiguous.
-flatten() {
-  sed -e 's#\(Alt-\|M-\)\([A-Za-z0-9]\)/\([A-Za-z0-9]\)/\([A-Za-z0-9]\)/\([A-Za-z0-9]\)#\1\2 \1\3 \1\4 \1\5#g' \
-      -e 's#\(prefix + \)\([A-Za-z]\)/\([A-Za-z]\)/\([A-Za-z]\)/\([A-Za-z]\)#\1\2 \1\3 \1\4 \1\5#g' \
-      -e 's#\([A-Za-z-]*\) / \([A-Za-z-]*\)#\1 \2#g' \
-      -e 's#`\([^`]*\)`#\1#g' "$1" | tr 'A-Z' 'a-z'
+source_out=$(isolated_tmux -S "$CFG" source-file \
+  "$CHECK_HOME/.config/tmux/tmux.conf" 2>&1) || {
+  echo "check-docs: tmux.conf failed to parse:"
+  printf '%s\n' "$source_out" | sed 's/^/  /'
+  exit 1
 }
-flatten README.md      > "$TMP/readme"
-flatten scripts/keys.sh > "$TMP/keys"
 
-# tmux spelling -> every spelling a doc is allowed to use. ALL are printed and any one counts:
-# README.md writes Alt-h for readability, keys.sh writes M-h to match what tmux prints, and both
-# are correct. Accepting only one of them is what made the first run of this script cry wolf.
+baseline_shell=$(isolated_tmux -S "$VAN" show-options -gv default-shell) || exit 1
+configured_shell=$(isolated_tmux -S "$CFG" show-options -gv default-shell) || exit 1
+[ "$baseline_shell" = "$CHECK_SHELL" ] || {
+  printf 'check-docs: baseline ignored temporary SHELL: expected %s, got %s\n' \
+    "$CHECK_SHELL" "$baseline_shell"
+  exit 1
+}
+fail=0
+if [ "$configured_shell" != "$baseline_shell" ]; then
+  printf '  shared config changed default-shell: %s -> %s\n' \
+    "$baseline_shell" "$configured_shell"
+  fail=1
+fi
+
+# pairs <socket> <table> — normalized effective key<TAB>command rows.
+# list-keys quotes punctuation when needed, but never puts whitespace inside a key token. Find the
+# key relative to '-T <table>' so repeat flags before -T do not shift a hard-coded field number.
+pairs() {
+  isolated_tmux -S "$1" list-keys -T "$2" 2>/dev/null |
+    awk -v table="$2" '
+      {
+        key_at = 0
+        for (i = 1; i <= NF; i++) {
+          if ($i == "-T" && $(i + 1) == table) {
+            key_at = i + 2
+            break
+          }
+        }
+        if (key_at == 0 || key_at > NF) next
+        key = $key_at
+        sub(/^"/, "", key)
+        sub(/"$/, "", key)
+        command = ""
+        for (i = key_at + 1; i <= NF; i++)
+          command = command (command == "" ? "" : " ") $i
+        print key "\t" command
+      }
+    ' | LC_ALL=C sort -u
+}
+
+# Lowercase ASCII and remove Markdown backticks. Alias matching below handles grouped notation;
+# leaving the prose otherwise intact makes every accepted spelling visible and reviewable.
+normalize_doc() {
+  sed 's/`//g' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]'
+}
+normalize_doc README.md > "$TMP/readme"
+normalize_doc scripts/keys.sh > "$TMP/keys"
+
+# doc_spelling <table> <tmux-key> — every spelling either document may use; any one is enough.
 doc_spelling() {
-  low=$(printf '%s' "$1" | tr 'A-Z' 'a-z')
-  case "$1" in
-    M-Left)            printf 'alt-left\nalt-←\nm-left\n' ;;
-    M-Right)           printf 'alt-right\nalt-→\nm-right\n' ;;
-    M-*)               printf 'alt-%s\nm-%s\n' "${low#m-}" "${low#m-}" ;;
-    MouseDown1Status*) printf 'session strip\nsession pill\n' ;;
-    MouseDragEnd1Pane) printf 'mouse-drag-release\nmouse-drag\n' ;;
-    *)                 printf '%s\n' "$low" ;;
+  table=$1
+  key=$2
+  low=$(printf '%s' "$key" | LC_ALL=C tr '[:upper:]' '[:lower:]')
+
+  case "$key" in
+    MouseDown1StatusRight) printf 'session pill\n' ;;
+    MouseDown1Pane)        printf 'mouse-click\n' ;;
+    MouseDragEnd1Pane)     printf 'mouse-drag-release\nmouse-drag\n' ;;
+    M-Left)                printf 'alt-left\nalt-←\nm-left\n' ;;
+    M-Right)               printf 'alt-right\nalt-→\nm-right\n' ;;
+    M-h|M-j|M-k|M-l)
+      printf 'alt-%s\nm-%s\nalt-h/j/k/l\nm-h/j/k/l\n' "${low#m-}" "${low#m-}" ;;
+    M-[1-9])
+      printf 'alt-%s\nm-%s\nalt-1..9\nalt-1…alt-9\nm-1..9\n' "${low#m-}" "${low#m-}" ;;
+    M-*)
+      printf 'alt-%s\nm-%s\n' "${low#m-}" "${low#m-}" ;;
+    H|J|K|L)
+      printf 'prefix + %s\nprefix %s\nprefix + h/j/k/l\nprefix h/j/k/l\n' "$low" "$low" ;;
+    '<'|'>')
+      printf 'prefix + %s\nprefix %s\nprefix < / >\nprefix + < / >\n' "$low" "$low" ;;
+    '"'|\\)
+      printf 'prefix + "\nprefix "\nprefix " / %%\n' ;;
+    '%'|'\%')
+      printf 'prefix + %%\nprefix %%\nprefix " / %%\n' ;;
+    C-c) printf 'ctrl-c\nc-c\n' ;;
+    *)
+      case "$table" in
+        prefix) printf 'prefix + %s\nprefix %s\n' "$low" "$low" ;;
+        *)      printf '%s\n' "$low" ;;
+      esac
+      ;;
   esac
 }
 
-# Keys deliberately not in the user-facing lists, with the reason. Anything not here must be
-# documented; anything here must stay justified.
+# Plumbing is not a user-facing action. Everything else must be documented.
 exempt() {
-  case "$1" in
-    C-a|C-Space) return 0 ;;   # send-prefix passthrough: plumbing for the leader, not a command
-    [1-9]|M-[1-9]) return 0 ;; # digit runs; documented as the ranges prefix + 1...9 / Alt-1...9
+  table=$1
+  key=$2
+  case "$table:$key" in
+    prefix:C-a|prefix:C-Space) return 0 ;; # send-prefix passthrough for the two leaders
     *) return 1 ;;
   esac
 }
 
-fail=0
-for tbl in prefix root copy-mode-vi; do
-  keys "$VAN" "$tbl" > "$TMP/van"
-  keys "$SOCK" "$tbl" | comm -13 "$TMP/van" - > "$TMP/ours"
-  while IFS= read -r k; do
-    [ -n "$k" ] || continue
-    exempt "$k" && continue
-    doc_spelling "$k" > "$TMP/spellings"
+tab=$(printf '\t')
+for table in prefix root copy-mode-vi off; do
+  pairs "$VAN" "$table" > "$TMP/van-$table"
+  pairs "$CFG" "$table" > "$TMP/cfg-$table"
+  LC_ALL=C comm -13 "$TMP/van-$table" "$TMP/cfg-$table" > "$TMP/ours-$table"
+
+  while IFS="$tab" read -r key command; do
+    [ -n "$key" ] || continue
+    exempt "$table" "$key" && continue
+    doc_spelling "$table" "$key" > "$TMP/spellings"
     for doc in readme keys; do
       hit=0
-      while IFS= read -r s; do
-        [ -n "$s" ] || continue
-        if grep -qF -- "$s" "$TMP/$doc"; then hit=1; break; fi
+      while IFS= read -r spelling; do
+        [ -n "$spelling" ] || continue
+        if grep -F -q -e "$spelling" "$TMP/$doc"; then
+          hit=1
+          break
+        fi
       done < "$TMP/spellings"
       if [ "$hit" -eq 0 ]; then
         case "$doc" in
-          readme) echo "  undocumented in README.md    : [$tbl] $k" ;;
-          keys)   echo "  undocumented in keys.sh      : [$tbl] $k" ;;
+          readme) printf '  undocumented in README.md : [%s] %s -> %s\n' "$table" "$key" "$command" ;;
+          keys)   printf '  undocumented in keys.sh   : [%s] %s -> %s\n' "$table" "$key" "$command" ;;
         esac
         fail=1
       fi
     done
-  done < "$TMP/ours"
+  done < "$TMP/ours-$table"
 done
 
 if [ "$fail" -eq 0 ]; then
-  echo "check-docs: every custom binding appears in README.md and scripts/keys.sh"
+  echo "check-docs: every custom or overridden binding appears in README.md and scripts/keys.sh"
 fi
 exit "$fail"

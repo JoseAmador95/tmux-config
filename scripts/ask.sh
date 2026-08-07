@@ -14,11 +14,14 @@
 # --print-query, which sounds like the obvious flag here, is useless: on abort it prints nothing).
 # So there is no sentinel string to misparse and no way for a cancel to look like an empty answer.
 set -u
+# shellcheck source=scripts/fzf-style.sh
 . "$(cd "$(dirname "$0")" && pwd)/fzf-style.sh"
 
 if [ "${1:-}" = '--confirm' ]; then
   # A two-row list rather than a y/N read: Esc cancels, and "no" is the row under the cursor, so
   # the destructive answer is never the one Enter lands on by accident.
+  # fzf_style's documented contract is one whitespace-free option per line; splitting is wanted.
+  # shellcheck disable=SC2046
   ans=$(printf 'no\nyes\n' | fzf $(fzf_style) --no-sort --info=hidden \
           --prompt "${2:-are you sure?} " --header 'Enter confirms · Esc cancels')
   [ "$ans" = 'yes' ] || exit 1
@@ -29,6 +32,8 @@ fi
 
 # Empty stdin: fzf is being used as a text field, not a picker, so there is nothing to pick and
 # Enter is rebound to print-query.
+# fzf_style's documented contract is one whitespace-free option per line; splitting is wanted.
+# shellcheck disable=SC2046
 ans=$(: | fzf $(fzf_style) --info=hidden \
         --prompt "${1} " --query "${2:-}" \
         --header 'Enter confirms · Esc cancels' \

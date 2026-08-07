@@ -1,0 +1,33 @@
+name: tmux config
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out pinned plugins
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install validation dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes tmux fzf zsh shellcheck python3
+
+      - name: Wire canonical config path
+        run: |
+          mkdir -p "$HOME/.config"
+          ln -s "$GITHUB_WORKSPACE" "$HOME/.config/tmux"
+
+      - name: Run maintained validation
+        run: |
+          cd "$HOME/.config/tmux"
+          ./scripts/check-config.sh
+          ./scripts/doctor.sh --brief

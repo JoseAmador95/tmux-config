@@ -2,9 +2,6 @@
 	path = plugins/tmux-fingers
 	url = https://github.com/Morantron/tmux-fingers
 	ignore = untracked
-[submodule "plugins/tmux-open"]
-	path = plugins/tmux-open
-	url = https://github.com/tmux-plugins/tmux-open
 [submodule "plugins/tmux-easy-motion"]
 	path = plugins/tmux-easy-motion
 	url = https://github.com/IngoMeyer441/tmux-easy-motion

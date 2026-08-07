@@ -11,6 +11,7 @@
 # The pane id is passed in because the popup is its own pane: tmux expands #{pane_id} in the
 # binding, before the popup exists, so the capture targets the pane you invoked it from.
 set -u
+# shellcheck source=scripts/fzf-style.sh
 . "$(cd "$(dirname "$0")" && pwd)/fzf-style.sh"
 
 pane="${1:-}"
@@ -21,6 +22,8 @@ urls=$(tmux capture-pane -pJS -32768 -t "$pane" 2>/dev/null |
        grep -oE "(https?|ftp|file)://[^ \"'\`<>\\\\]+" | sed 's/[.,;:)]*$//' | sort -u)
 [ -n "$urls" ] || { tmux display-message "no URLs in this pane"; exit 0; }
 
+# fzf_style's documented contract is one whitespace-free option per line; splitting is wanted.
+# shellcheck disable=SC2046
 sel=$(printf '%s\n' "$urls" | fzf $(fzf_style) --multi --info=inline \
         --prompt 'url ' --header 'Tab marks · Enter opens · Esc cancels') || exit 0
 [ -n "$sel" ] || exit 0
