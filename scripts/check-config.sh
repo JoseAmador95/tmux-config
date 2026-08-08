@@ -340,6 +340,54 @@ pane_helpers_and_status() {
   stop_active_server
 }
 
+mode_frame_behaviour() {
+  start_plain_server || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" source-file "$ROOT/tmux.conf" >/dev/null 2>&1 || return
+
+  active_colour=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" show-options -gqv @pane_active_colour)
+  expect_equal "$active_colour" \
+    '#{?client_prefix,#{E:@thm_urgent},#{?pane_in_mode,#{E:@thm_current_search},#{?window_zoomed_flag,#{E:@thm_attention},#{E:@thm_accent}}}}' \
+    'active frame mode precedence' || return
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" show-options -gqv pane-active-border-style)" \
+    'fg=#{E:@pane_active_colour},bold' 'active border colour source' || return
+
+  # The outer active test is intentional: an active dead pane must use the same dynamic colour as
+  # its border line, while only an inactive dead pane falls through to @thm_dead. The content test
+  # stays independent so both dead cases retain the exit status and revive hint.
+  border_format=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" show-options -gqv pane-border-format)
+  expect_contains "$border_format" \
+    '#{?pane_active,#[fg=#{E:@pane_active_colour}#,bold],#{?pane_dead,#[fg=#{E:@thm_dead}#,bold],#[fg=#{E:@thm_line}#,nobold]}}' \
+    'active, inactive-dead and inactive-live label colours' || return
+  expect_contains "$border_format" \
+    '#{?pane_dead, ✗ #{pane_index} exit #{pane_dead_status} — prefix + R to revive ,' \
+    'dead pane context' || return
+
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" split-window -d -t base -c "$ROOT" 'sleep 120' || return
+  mode_pane=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t base '#{pane_id}') || return
+  accent=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p '#{E:@thm_accent}')
+  attention=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p '#{E:@thm_attention}')
+  current_search=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p '#{E:@thm_current_search}')
+
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$mode_pane" \
+    '#{E:@pane_active_colour}')" "$accent" 'normal active frame' || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-option -w -t base synchronize-panes on || return
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$mode_pane" \
+    '#{E:@pane_active_colour}')" "$accent" 'synchronized active frame' || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-option -w -t base synchronize-panes off || return
+
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" resize-pane -Z -t "$mode_pane" || return
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$mode_pane" \
+    '#{E:@pane_active_colour}')" "$attention" 'zoomed active frame' || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" copy-mode -t "$mode_pane" || return
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$mode_pane" \
+    '#{E:@pane_active_colour}')" "$current_search" 'copy mode over zoom frame' || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" send-keys -t "$mode_pane" -X cancel || return
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$mode_pane" \
+    '#{E:@pane_active_colour}')" "$attention" 'zoom frame restored after copy mode' || return
+
+  stop_active_server
+}
+
 plugin_and_binding_contract() {
   start_plain_server || return
   "$TMUX_REAL" -L "$ACTIVE_SOCKET" source-file "$ROOT/tmux.conf" >/dev/null 2>&1 || return
@@ -378,6 +426,7 @@ run_check 'real source-file parse and core invariants' parse_and_invariants
 run_check 'detached smoke on a distinct socket' detached_smoke
 run_check 'exact SSH metadata, validation and rename cleanup' ssh_behaviour
 run_check 'logging, splits, status, opener and roster behaviour' pane_helpers_and_status
+run_check 'mode-aware active pane frame' mode_frame_behaviour
 run_check 'plugin and binding ownership' plugin_and_binding_contract
 
 printf 'check-config: %s failure(s) across %s checks\n' "$FAILURES" "$TESTS"

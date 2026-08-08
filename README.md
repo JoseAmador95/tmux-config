@@ -143,18 +143,24 @@ shell. `Alt-n`, `prefix + "` and `prefix + %` all share the same split guard, so
 `agent`, `editor` and `git` tool windows reject every split route consistently.
 
 The line between two panes is `pane-border-lines heavy` — a bolder weight than tmux's thin default,
-still a single glyph rather than a block, with `@thm_line` on top of it a shade more contrasting
-than before (see [Contrast](#contrast)). Two heavier-handed attempts at this — blank-cell "padding"
-that turned invisible without a matching background colour, then a same-colour-fg/bg solid bar that
-fixed the visibility but lost the thin line entirely — were both tried and reverted in favour of this
-smaller change.
+still a single glyph rather than a block, with `@thm_line` keeping inactive frames quiet (see
+[Contrast](#contrast)). Two heavier-handed attempts at this — blank-cell "padding" that turned
+invisible without a matching background colour, then a same-colour-fg/bg solid bar that fixed the
+visibility but lost the thin line entirely — were both tried and reverted in favour of this smaller
+change.
 
 Each live pane's frame (`pane-border-status top`) shows its index, the shared per-command `@wicon`,
 the command, and the current directory's basename truncated to 20 characters. Two panes in the
 same window can and do show different icons and commands because each pane's own
 `#{pane_current_command}` drives the label; an `ssh` pane says `remote` instead of showing its
-misleading local cwd. The active label is blue and bold. A dead pane replaces that context with its
-exit status and `prefix + R` revive key.
+misleading local cwd. The active label is bold and follows the mode colour described below. A dead
+pane replaces that context with its exit status and `prefix + R` revive key.
+
+The active pane's whole frame — border line and top label — also identifies the mode that will affect
+it: blue normally, yellow when zoomed, mauve in copy/view mode, and red while the prefix is held.
+When states overlap the priority is prefix, then copy/view mode, then zoom, then normal focus. A dead
+active pane keeps its exit status and revive hint in that active colour; inactive dead panes remain
+red. Synchronize-panes alone intentionally keeps the normal blue focus frame.
 
 ### Copy & clipboard
 
