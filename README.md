@@ -181,7 +181,6 @@ red. Synchronize-panes alone intentionally keeps the normal blue focus frame.
 | ------------ | --------------------------------------------------------- | ---------------- |
 | `prefix + e` | grab a path/URL/hash off the screen into the command line | extrakto         |
 | `prefix + f` | label every match on screen; press its letter to copy     | tmux-fingers     |
-| `Alt-f`      | same, no prefix                                           | tmux-fingers     |
 | `prefix + F` | fuzzy-search the scrollback and jump to the hit           | tmux-fuzzback    |
 | `prefix + u` | pick a URL from the pane and open it                      | config           |
 | `U` / `O`    | (copy mode) jump back to the previous URL / file path     | config           |
@@ -202,7 +201,9 @@ place, inside the palette's own popup. Every other palette action is a curated t
 `display-popup` cannot be nested — asked for one from inside another, tmux opens neither.
 
 `prefix + f` replaces `find-window` only while tmux-fingers is usable; otherwise the default is
-restored. Copy-mode `o` similarly replaces `other-end` only when `open` or `xdg-open` exists.
+restored. `Alt-f` is deliberately not a tmux root binding, so shells keep their native forward-word
+navigation; the separate copy-mode table remains untouched. Copy-mode `o` similarly replaces
+`other-end` only when `open` or `xdg-open` exists.
 
 ---
 
@@ -216,19 +217,20 @@ February 2023 — while `brew install tpm`, the tidiest way to install it, is un
 
 | Plugin             | What it gives you                                             | Needs               |
 | ------------------ | ------------------------------------------------------------- | ------------------- |
-| `tmux-fingers`     | hint letters painted over the screen (`prefix + f` / `Alt-f`) | a binary, see below |
-| `tmux-fuzzback`    | scrollback search + jump (`prefix + F`)                       | fzf                 |
-| `extrakto`         | grab tokens off the screen (`prefix + e`)                     | Python 3.6+, fzf    |
-| `tmux-easy-motion` | easy-motion jumps in copy mode (`s`)                          | Python              |
+| `tmux-fingers`     | hint letters painted over the screen (`prefix + f`) | a binary, see below |
+| `tmux-fuzzback`    | scrollback search + jump (`prefix + F`)             | fzf                 |
+| `extrakto`         | grab tokens off the screen (`prefix + e`)           | Python 3.6+, fzf    |
+| `tmux-easy-motion` | easy-motion jumps in copy mode (`s`)                | Python              |
 
 Updating one is deliberate: `git submodule update --remote plugins/<name>`, then a commit that says
 what moved.
 
 **`tmux-fingers` is a compiled binary**, and prebuilt ones exist for **Linux x86_64 and macOS arm64
 only**. Anywhere else, build it with Crystal or `brew install morantron/tmux-fingers/tmux-fingers`;
-until then `prefix + f` keeps tmux's `find-window` and `Alt-f` stays unbound. `bootstrap.sh` fetches
-the binary, and `tmux.conf` refuses to load the plugin until it exists — its own loader would
-otherwise fire a network installer in the background _every time the config is sourced_.
+until then `prefix + f` keeps tmux's `find-window`. `Alt-f` remains shell word navigation whether or
+not that binary exists. `bootstrap.sh` fetches the binary, and `tmux.conf` refuses to load the plugin
+until it exists — its own loader would otherwise fire a network installer in the background _every
+time the config is sourced_.
 
 Copy-mode `o` / `C-o` are intentionally config-owned. `scripts/open-selection.sh` validates the
 selection once, resolves relative paths from the source pane, and dispatches to the system opener

@@ -68,8 +68,8 @@ fi
 # would fetch it by firing an install wizard through `run-shell -b` DURING config parsing — a
 # network call every time tmux.conf is sourced. tmux.conf sets @fingers-skip-wizard to stop that,
 # which makes fetching the binary this script's job. Prebuilt binaries exist for Linux x86_64 and
-# macOS arm64 only; anywhere else this warns and fingers stays inert, which is why its key binding
-# is allowed to stay unavailable rather than break the config.
+# macOS arm64 only; anywhere else this warns and Fingers stays inert, so prefix + f retains tmux's
+# find-window. Alt-f remains shell word navigation independently of whether the binary is present.
 FINGERS_DIR="$DIR/plugins/tmux-fingers"
 if [ "$SKIP_PLUGINS" -eq 1 ] || [ ! -f "$FINGERS_DIR/install-wizard.sh" ]; then
   :
@@ -92,7 +92,7 @@ else
   else
     warn "could not install the tmux-fingers binary:"
     printf '%s\n' "$fingers_out" | tail -2 | sed 's/^/      /'
-    warn "  hints remain unavailable; prefix + f keeps find-window and Alt-f stays unbound"
+    warn "  hints remain unavailable; prefix + f keeps find-window; Alt-f remains shell word navigation"
     warn "  brew install morantron/tmux-fingers/tmux-fingers — or build it with Crystal"
   fi
 fi

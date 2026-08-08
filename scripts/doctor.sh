@@ -240,7 +240,7 @@ fi
 if command -v tmux-fingers >/dev/null 2>&1 || [ -x "$ROOT/plugins/tmux-fingers/bin/tmux-fingers" ]; then
   pass 'tmux-fingers binary is available'
 else
-  warn 'tmux-fingers binary is missing; prefix + f keeps find-window and Alt-f stays unbound'
+  warn 'tmux-fingers binary is missing; prefix + f keeps find-window; Alt-f remains shell word navigation'
 fi
 
 manual 'Nerd Font glyph coverage cannot be proven automatically; inspect the status bar manually.'

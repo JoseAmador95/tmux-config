@@ -390,24 +390,47 @@ mode_frame_behaviour() {
 
 plugin_and_binding_contract() {
   start_plain_server || return
+  native_copy_alt_f=$(binding_for copy-mode-vi M-f)
   "$TMUX_REAL" -L "$ACTIVE_SOCKET" source-file "$ROOT/tmux.conf" >/dev/null 2>&1 || return
 
   stale_cf=$(binding_for prefix C-f)
   [ -n "$stale_cf" ] && {
     printf 'stale prefix C-f binding remains\n'; return 1;
   }
+  [ -z "$(binding_for root M-f)" ] || {
+    printf 'Alt-f must remain unbound in the root table\n'; return 1;
+  }
+  expect_equal "$(binding_for copy-mode-vi M-f)" "$native_copy_alt_f" \
+    'copy-mode Alt-f table remains native' || return
   if command -v tmux-fingers >/dev/null 2>&1 || [ -x "$ROOT/plugins/tmux-fingers/bin/tmux-fingers" ]; then
+    fingers_binding='@fingers-cli'
+    fingers_context='prefix f fingers binding'
     expect_contains "$(binding_for prefix f)" '@fingers-cli' \
       'prefix f fingers binding' || return
-    expect_contains "$(binding_for root M-f)" '@fingers-cli' \
-      'Alt-f fingers binding' || return
   else
+    fingers_binding='find-window'
+    fingers_context='prefix f fallback'
     expect_contains "$(binding_for prefix f)" 'find-window' \
       'prefix f fallback' || return
-    [ -n "$(binding_for root M-f)" ] && {
-      printf 'Alt-f is bound without a usable fingers binary\n'; return 1;
-    }
   fi
+
+  # A source-file reload is the migration path for a server that already has the retired global
+  # Fingers shortcut (and the older prefix C-f override). Seed both stale bindings deliberately,
+  # then prove the config removes them without disturbing either prefix f or prefix J.
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" bind-key -T root M-f display-message 'legacy Alt-f' || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" bind-key -T prefix C-f display-message 'legacy C-f' || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" source-file "$ROOT/tmux.conf" >/dev/null 2>&1 || return
+  [ -z "$(binding_for root M-f)" ] || {
+    printf 'reload left the legacy root M-f binding behind\n'; return 1;
+  }
+  [ -z "$(binding_for prefix C-f)" ] || {
+    printf 'reload left the legacy prefix C-f binding behind\n'; return 1;
+  }
+  expect_contains "$(binding_for prefix f)" "$fingers_binding" \
+    "$fingers_context after reload" || return
+  expect_contains "$(binding_for prefix J)" 'resize-pane -D 5' \
+    'prefix J resize binding after Fingers reload' || return
+
   expect_contains "$(binding_for copy-mode-vi C-o)" \
     'open-selection.sh --editor' 'editor selection binding' || return
   opener_binding=$(binding_for copy-mode-vi o)
