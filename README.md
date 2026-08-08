@@ -300,11 +300,12 @@ accent reading as a slab — it is the shape Catppuccin itself uses. Inactive ta
 instead of floating on the bar.
 
 - **left** — the current mode (prefix held / copy-mode / zoom / synchronized), rounded like every
-  other pill on this bar. Holding the prefix makes the combined pill red; every other displayed
-  mode remains blue. It collapses to nothing when idle, so the left is empty outside of one of those
-  four states. There used to be a second pill here too, a dedicated `ssh_<host>` marker — it is gone;
-  a remote session is still unmistakable from the **right**, whose pill wears the host's own tint
-  and shows the session's real name, `ssh_<host>` prefix and all.
+  other pill on this bar. Its background matches the active pane frame: red prefix > mauve
+  copy/view > yellow zoom > blue normal or sync-only, with a measured ink for each colour. It
+  collapses to nothing when idle, so the left is empty outside of those four states. There used to
+  be a second pill here too, a dedicated `ssh_<host>` marker — it is gone; a remote session is still
+  unmistakable from the **right**, whose pill wears the host's own tint and shows the session's
+  real name, `ssh_<host>` prefix and all.
 - **centre** — the window list, anchored with `status-justify absolute-centre` so the tabs do not
   slide when the session name changes length. Each window carries an icon for what is running in it
   and at most one alert marker: red `!` bell, yellow `◆` silence, or green `●` activity, in

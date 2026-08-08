@@ -348,8 +348,22 @@ mode_frame_behaviour() {
   expect_equal "$active_colour" \
     '#{?client_prefix,#{E:@thm_urgent},#{?pane_in_mode,#{E:@thm_current_search},#{?window_zoomed_flag,#{E:@thm_attention},#{E:@thm_accent}}}}' \
     'active frame mode precedence' || return
+  active_ink=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" show-options -gqv @pane_active_ink)
+  expect_equal "$active_ink" \
+    '#{?client_prefix,#{E:@thm_urgent_ink},#{?pane_in_mode,#{E:@thm_current_search_ink},#{?window_zoomed_flag,#{E:@thm_attention_ink},#{E:@thm_ink}}}}' \
+    'mode pill ink precedence' || return
   expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" show-options -gqv pane-active-border-style)" \
     'fg=#{E:@pane_active_colour},bold' 'active border colour source' || return
+
+  status_left=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" show-options -gqv status-left)
+  expect_contains "$status_left" \
+    'fg=#{E:@pane_active_colour},bg=terminal' 'mode pill cap colour source' || return
+  expect_contains "$status_left" \
+    'fg=#{E:@pane_active_ink},bg=#{E:@pane_active_colour},bold' \
+    'mode pill body colour and ink sources' || return
+  case "$status_left" in
+    *'?client_prefix'*) printf 'status-left has a colour precedence separate from the active frame\n'; return 1 ;;
+  esac
 
   # The outer active test is intentional: an active dead pane must use the same dynamic colour as
   # its border line, while only an inactive dead pane falls through to @thm_dead. The content test
@@ -366,7 +380,9 @@ mode_frame_behaviour() {
   mode_pane=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t base '#{pane_id}') || return
   accent=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p '#{E:@thm_accent}')
   attention=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p '#{E:@thm_attention}')
+  attention_ink=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p '#{E:@thm_attention_ink}')
   current_search=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p '#{E:@thm_current_search}')
+  current_search_ink=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p '#{E:@thm_current_search_ink}')
 
   expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$mode_pane" \
     '#{E:@pane_active_colour}')" "$accent" 'normal active frame' || return
@@ -378,9 +394,13 @@ mode_frame_behaviour() {
   "$TMUX_REAL" -L "$ACTIVE_SOCKET" resize-pane -Z -t "$mode_pane" || return
   expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$mode_pane" \
     '#{E:@pane_active_colour}')" "$attention" 'zoomed active frame' || return
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$mode_pane" \
+    '#{E:@pane_active_ink}')" "$attention_ink" 'zoomed mode pill ink' || return
   "$TMUX_REAL" -L "$ACTIVE_SOCKET" copy-mode -t "$mode_pane" || return
   expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$mode_pane" \
     '#{E:@pane_active_colour}')" "$current_search" 'copy mode over zoom frame' || return
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$mode_pane" \
+    '#{E:@pane_active_ink}')" "$current_search_ink" 'copy mode pill ink over zoom' || return
   "$TMUX_REAL" -L "$ACTIVE_SOCKET" send-keys -t "$mode_pane" -X cancel || return
   expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$mode_pane" \
     '#{E:@pane_active_colour}')" "$attention" 'zoom frame restored after copy mode' || return
