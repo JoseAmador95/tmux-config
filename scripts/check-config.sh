@@ -357,9 +357,9 @@ mode_frame_behaviour() {
 
   status_left=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" show-options -gqv status-left)
   expect_contains "$status_left" \
-    'fg=#{E:@pane_active_colour},bg=terminal' 'mode pill cap colour source' || return
+    'fg=#{E:@pane_active_colour}#,bg=terminal' 'mode pill cap colour source' || return
   expect_contains "$status_left" \
-    'fg=#{E:@pane_active_ink},bg=#{E:@pane_active_colour},bold' \
+    'fg=#{E:@pane_active_ink}#,bg=#{E:@pane_active_colour}#,bold' \
     'mode pill body colour and ink sources' || return
   case "$status_left" in
     *'?client_prefix'*) printf 'status-left has a colour precedence separate from the active frame\n'; return 1 ;;
@@ -396,11 +396,24 @@ mode_frame_behaviour() {
     '#{E:@pane_active_colour}')" "$attention" 'zoomed active frame' || return
   expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$mode_pane" \
     '#{E:@pane_active_ink}')" "$attention_ink" 'zoomed mode pill ink' || return
+  zoom_pill=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$mode_pane" \
+    '#{E:status-left}')
+  expect_contains "$zoom_pill" "#[fg=$attention,bg=terminal]" \
+    'rendered zoom pill cap' || return
+  expect_contains "$zoom_pill" "#[fg=$attention_ink,bg=$attention,bold] ZOOM " \
+    'rendered zoom pill body' || return
   "$TMUX_REAL" -L "$ACTIVE_SOCKET" copy-mode -t "$mode_pane" || return
   expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$mode_pane" \
     '#{E:@pane_active_colour}')" "$current_search" 'copy mode over zoom frame' || return
   expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$mode_pane" \
     '#{E:@pane_active_ink}')" "$current_search_ink" 'copy mode pill ink over zoom' || return
+  copy_pill=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$mode_pane" \
+    '#{E:status-left}')
+  expect_contains "$copy_pill" "#[fg=$current_search,bg=terminal]" \
+    'rendered copy-mode pill cap' || return
+  expect_contains "$copy_pill" \
+    "#[fg=$current_search_ink,bg=$current_search,bold] copy-mode ZOOM " \
+    'rendered copy-mode pill body' || return
   "$TMUX_REAL" -L "$ACTIVE_SOCKET" send-keys -t "$mode_pane" -X cancel || return
   expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$mode_pane" \
     '#{E:@pane_active_colour}')" "$attention" 'zoom frame restored after copy mode' || return
