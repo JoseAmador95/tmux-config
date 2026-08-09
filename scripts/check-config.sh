@@ -275,9 +275,11 @@ write_fakes() {
   # prove active success and active bridge failures do not reach host RPC.
   # shellcheck disable=SC2016
   printf '%s\n' '#!/bin/sh' \
-    'printf "%s\\n" "$@" > "$DEVPOD_LOG"' \
+    'printf "%s\\n" "$@" > "${DEVPOD_LOG:-$HOME/devpod.log}"' \
+    '[ "${1:-}" = up ] && exec sleep 120' \
     'exit "${DEVPOD_OPEN_STATUS:-3}"' \
     > "$TEST_HOME/.config/nvim/scripts/devpod-nvim"
+  printf '%s\n' '#!/bin/sh' 'exec sleep 120' > "$TEST_BIN/nvim"
   # shellcheck disable=SC2016
   printf '%s\n' '#!/bin/sh' 'printf "%s\\n" "$@" > "$REVIEW_LOG"' \
     > "$TEST_HOME/.config/tuicr/tuicr-round"
@@ -310,11 +312,82 @@ write_fakes() {
     '    exit 3 ;;' \
     'esac' \
     'exit 4' > "$PALETTE_BIN/tmux"
-  chmod +x "$TEST_BIN/ssh" "$TEST_BIN/open" "$TEST_BIN/fzf" \
+  chmod +x "$TEST_BIN/ssh" "$TEST_BIN/open" "$TEST_BIN/fzf" "$TEST_BIN/nvim" \
     "$PALETTE_BIN/tmux" \
     "$TEST_HOME/.config/nvim/scripts/devpod-nvim" \
     "$TEST_HOME/.config/nvim/scripts/nvim-review-open" \
     "$TEST_HOME/.config/tuicr/tuicr-round"
+}
+
+devpod_editor_behaviour() {
+  start_plain_server || return
+  ref=$(server_ref) || return
+  write_fakes || return
+  DEVPOD_LOG=$TEST_HOME/devpod.log
+  export DEVPOD_LOG
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-environment -g DEVPOD_LOG "$DEVPOD_LOG" || return
+
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-session -d -s editor-create -n shell -c "$ROOT" 'sleep 120' || return
+  source_pane=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t editor-create:shell '#{pane_id}'
+  ) || return
+  PATH="$TEST_BIN:$PATH" TMUX=$ref "$ROOT/scripts/devpod-editor.sh" host "$source_pane" || return
+  editor_windows=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" list-windows -t editor-create -F '#{window_id}	#{window_name}' |
+      awk -F '	' '$2 == "editor" { print $1 }'
+  ) || return
+  expect_equal "$(printf '%s\n' "$editor_windows" | awk 'NF { count++ } END { print count + 0 }')" 1 \
+    'missing editor window is created exactly once' || return
+  editor_window=$(printf '%s\n' "$editor_windows" | sed -n '1p')
+  editor_pane=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$editor_window" '#{pane_id}'
+  ) || return
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" show-option -pqv -t "$editor_pane" remain-on-exit)" on \
+    'created editor pane remains visible on exit' || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$source_pane" '#{pane_id}' >/dev/null || {
+    printf 'creating the editor window destroyed the source pane\n'
+    return 1
+  }
+
+  PATH="$TEST_BIN:$PATH" TMUX=$ref "$ROOT/scripts/devpod-editor.sh" host "$source_pane" || return
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$editor_window" '#{pane_id}')" \
+    "$editor_pane" 'existing editor pane is reused' || return
+  PATH="$TEST_BIN:$PATH" TMUX=$ref "$ROOT/scripts/devpod-editor.sh" up "$source_pane" || return
+  attempts=0
+  while [ ! -f "$DEVPOD_LOG" ] && [ "$attempts" -lt 100 ]; do
+    sleep 0.02
+    attempts=$((attempts + 1))
+  done
+  expect_equal "$(sed -n '1p' "$DEVPOD_LOG")" up 'DevPod launcher starts in the editor pane' || return
+
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-session -d -s editor-ambiguous -n shell -c "$ROOT" 'sleep 120' || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-window -d -t editor-ambiguous: -n editor -c "$ROOT" 'sleep 120' || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-window -d -t editor-ambiguous: -n editor -c "$ROOT" 'sleep 120' || return
+  ambiguous_source=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t editor-ambiguous:shell '#{pane_id}'
+  ) || return
+  PATH="$TEST_BIN:$PATH" TMUX=$ref "$ROOT/scripts/devpod-editor.sh" host "$ambiguous_source" \
+    >/dev/null 2>&1 && {
+      printf 'ambiguous editor windows were accepted\n'
+      return 1
+    }
+
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-session -d -s ssh_editor_guard -n shell -c "$ROOT" 'sleep 120' || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-option -t ssh_editor_guard @ssh_host host.example || return
+  ssh_source=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t ssh_editor_guard:shell '#{pane_id}'
+  ) || return
+  PATH="$TEST_BIN:$PATH" TMUX=$ref "$ROOT/scripts/devpod-editor.sh" host "$ssh_source" \
+    >/dev/null 2>&1 && {
+      printf 'SSH session accepted a local editor window\n'
+      return 1
+    }
+  ssh_editor_count=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" list-windows -t ssh_editor_guard -F '#{window_name}' |
+      awk '$0 == "editor" { count++ } END { print count + 0 }'
+  ) || return
+  expect_equal "$ssh_editor_count" 0 'SSH guard creates no editor window' || return
+  stop_active_server
 }
 
 ssh_behaviour() {
@@ -622,6 +695,7 @@ plugin_and_binding_contract() {
 run_check 'real source-file parse and core invariants' parse_and_invariants
 run_check 'detached smoke on a distinct socket' detached_smoke
 run_check 'exact SSH metadata, validation and rename cleanup' ssh_behaviour
+run_check 'DevPod editor window creation, reuse and guards' devpod_editor_behaviour
 run_check 'logging, splits, status, opener and roster behaviour' pane_helpers_and_status
 run_check 'mode-aware active pane frame' mode_frame_behaviour
 run_check 'plugin and binding ownership' plugin_and_binding_contract

@@ -195,9 +195,10 @@ red. Synchronize-panes alone intentionally keeps the normal blue focus frame.
 | `prefix + r` | reload `tmux.conf`                               | config |
 | `F12`        | OFF mode — every tmux key off, for a nested tmux | config |
 
-The `Alt-Space` palette also has **editor: DevPod** and **editor: host**. They replace exactly the
-single pane in the current dev session's `editor` window; agent, Git, LazyGit and tuicr stay on the
-host. DevPod uses `~/.config/nvim/scripts/devpod-nvim`, preserves the stable `editor` window name,
+The `Alt-Space` palette also has **editor: DevPod** and **editor: host**. They create the exact
+single-pane `editor` window when it is absent, or reuse it when it already exists, then replace only
+that pane; agent, Git, LazyGit and tuicr stay on the host. DevPod uses
+`~/.config/nvim/scripts/devpod-nvim`, preserves the stable `editor` window name,
 and shows `DevPod · provider · project` in the pane frame. Exiting container Neovim leaves that pane
 dead under `remain-on-exit`; it never relaunches itself. **review current repository** starts or
 focuses a private `tuicr` review, while **show documentation** pages this README. Those latter two

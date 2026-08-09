@@ -1,5 +1,5 @@
 #!/bin/sh
-# Replace only the named dev session's editor pane with host or DevPod Neovim.
+# Create or reuse only the named dev session's editor window for host or DevPod Neovim.
 set -u
 
 say() {
@@ -27,19 +27,42 @@ repo=$(git -C "$repo" rev-parse --show-toplevel 2>/dev/null) || {
   exit 1
 }
 
-editor_panes=$(tmux list-panes -t "$session:=editor" -F '#{pane_id}' 2>/dev/null) || {
-  say "session $session has no editor window"
-  exit 1
-}
-editor_pane=$(printf '%s\n' "$editor_panes" | sed -n '1p')
-[ -n "$editor_pane" ] && [ "$(printf '%s\n' "$editor_panes" | wc -l | tr -d ' ')" -eq 1 ] || {
-  say 'editor window must contain exactly one pane'
+ssh_host=$(tmux show-option -qv -t "$session" @ssh_host 2>/dev/null) || ssh_host=''
+[ -z "$ssh_host" ] || {
+  say 'DevPod editor is unavailable in SSH sessions'
   exit 1
 }
 
 launcher=${HOME:-}/.config/nvim/scripts/devpod-nvim
 [ -x "$launcher" ] || { say "launcher is not executable: $launcher"; exit 1; }
 launcher_quoted=$(printf '%s' "$launcher" | sed "s/'/'\\\\''/g")
+
+editor_windows=$(tmux list-windows -t "$session" -F '#{window_id}	#{window_name}' 2>/dev/null |
+  awk -F '	' '$2 == "editor" { print $1 }') || exit 1
+editor_count=$(printf '%s\n' "$editor_windows" | awk 'NF { count++ } END { print count + 0 }')
+case "$editor_count" in
+  0)
+    editor_pane=$(tmux new-window -d -P -F '#{pane_id}' -t "$session:" -n editor -c "$repo" 'sleep 120') || {
+      say 'could not create the editor window'
+      exit 1
+    }
+    editor_window=$(tmux display-message -p -t "$editor_pane" '#{window_id}') || exit 1
+    ;;
+  1)
+    editor_window=$(printf '%s\n' "$editor_windows" | sed -n '1p')
+    editor_panes=$(tmux list-panes -t "$editor_window" -F '#{pane_id}') || exit 1
+    editor_pane=$(printf '%s\n' "$editor_panes" | sed -n '1p')
+    [ -n "$editor_pane" ] && [ "$(printf '%s\n' "$editor_panes" | awk 'NF { count++ } END { print count + 0 }')" -eq 1 ] || {
+      say 'editor window must contain exactly one pane'
+      exit 1
+    }
+    ;;
+  *)
+    say 'session has more than one editor window'
+    exit 1
+    ;;
+esac
+
 tmux set-option -p -t "$editor_pane" remain-on-exit on
 
 if [ "$action" = host ]; then
@@ -49,4 +72,4 @@ if [ "$action" = host ]; then
 else
   tmux respawn-pane -k -t "$editor_pane" -c "$repo" "exec '$launcher_quoted' up"
 fi
-tmux select-window -t "$session:=editor"
+tmux select-window -t "$editor_window"
