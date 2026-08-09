@@ -6,7 +6,8 @@
 #
 # --system passes http/https URLs directly to open(1) or xdg-open(1). Every other target must be
 # an existing path. --editor sends one opaque request to the already-registered Neovim for this
-# repository; it fails visibly rather than launching a second editor.
+# repository. An active DevPod editor owns the target first; the host registry
+# is consulted only when the launcher reports that no DevPod editor is active.
 #
 # THE SELECTION IS UNTRUSTED. It is whatever happened to be on screen. Never splice it, the pane
 # id, the cwd, or a target into an unquoted shell fragment. Every helper receives direct argv.
@@ -111,6 +112,29 @@ fi
 if [ "$mode" = --system ]; then
   open_system "$target"
   exit $?
+fi
+
+devpod_helper=${HOME:-}/.config/nvim/scripts/devpod-nvim
+if [ -x "$devpod_helper" ]; then
+  devpod_output=$(
+    "$devpod_helper" open-location \
+      --cwd "$dir" \
+      --file "$target" \
+      --line "${line:-1}" \
+      --column "${column:-1}" 2>&1
+  )
+  devpod_status=$?
+  if [ "$devpod_status" -eq 0 ]; then
+    exit 0
+  fi
+  # Exit 3 is the launcher's explicit, fail-closed "no active editor" result.
+  # Every other failure belongs to an active/ambiguous bridge and must not be
+  # hidden by sending the same path to a different editor.
+  if [ "$devpod_status" -ne 3 ]; then
+    [ -n "$devpod_output" ] || devpod_output='DevPod editor rejected the request'
+    say "$devpod_output"
+    exit "$devpod_status"
+  fi
 fi
 
 rpc_helper=${HOME:-}/.config/nvim/scripts/nvim-review-open

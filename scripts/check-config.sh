@@ -169,6 +169,14 @@ parse_and_invariants() {
     printf 'stable tuicr review palette entry is absent\n'
     return 1
   }
+  grep -F "'editor: DevPod'" "$ROOT/scripts/palette.sh" >/dev/null || {
+    printf 'stable DevPod editor palette entry is absent\n'
+    return 1
+  }
+  grep -F "'editor: host'" "$ROOT/scripts/palette.sh" >/dev/null || {
+    printf 'stable host editor palette entry is absent\n'
+    return 1
+  }
   grep -F "TMUX_PALETTE_SOURCE_PATH=\$(pwd -P)" "$ROOT/scripts/palette.sh" >/dev/null || {
     printf 'palette source path capture is absent\n'
     return 1
@@ -263,6 +271,13 @@ write_fakes() {
   # shellcheck disable=SC2016
   printf '%s\n' '#!/bin/sh' 'printf "%s\\n" "$@" > "$EDITOR_LOG"' \
     > "$TEST_HOME/.config/nvim/scripts/nvim-review-open"
+  # Exit 3 is the public no-active-DevPod contract; tests override it to
+  # prove active success and active bridge failures do not reach host RPC.
+  # shellcheck disable=SC2016
+  printf '%s\n' '#!/bin/sh' \
+    'printf "%s\\n" "$@" > "$DEVPOD_LOG"' \
+    'exit "${DEVPOD_OPEN_STATUS:-3}"' \
+    > "$TEST_HOME/.config/nvim/scripts/devpod-nvim"
   # shellcheck disable=SC2016
   printf '%s\n' '#!/bin/sh' 'printf "%s\\n" "$@" > "$REVIEW_LOG"' \
     > "$TEST_HOME/.config/tuicr/tuicr-round"
@@ -297,6 +312,7 @@ write_fakes() {
     'exit 4' > "$PALETTE_BIN/tmux"
   chmod +x "$TEST_BIN/ssh" "$TEST_BIN/open" "$TEST_BIN/fzf" \
     "$PALETTE_BIN/tmux" \
+    "$TEST_HOME/.config/nvim/scripts/devpod-nvim" \
     "$TEST_HOME/.config/nvim/scripts/nvim-review-open" \
     "$TEST_HOME/.config/tuicr/tuicr-round"
 }
@@ -388,19 +404,30 @@ pane_helpers_and_status() {
   fixture=$ROOT/tmux.conf
   OPEN_LOG=$TMP/open.log
   EDITOR_LOG=$TMP/editor.log
+  DEVPOD_LOG=$TMP/devpod.log
   REVIEW_LOG=$TMP/review.log
-  export OPEN_LOG EDITOR_LOG REVIEW_LOG
+  export OPEN_LOG EDITOR_LOG DEVPOD_LOG REVIEW_LOG
   printf '%s\n' 'https://example.invalid/path' | PATH="$TEST_BIN:$PATH" TMUX=$ref \
     "$ROOT/scripts/open-selection.sh" --system "$pane" || return
   expect_equal "$(sed -n '1p' "$OPEN_LOG")" 'https://example.invalid/path' 'system opener argv' || return
   printf '%s\n' "$fixture:12:7" | PATH="$TEST_BIN:$PATH" TMUX=$ref \
     "$ROOT/scripts/open-selection.sh" --editor "$pane" || return
+  expect_equal "$(sed -n '1p' "$DEVPOD_LOG")" 'open-location' 'DevPod RPC command' || return
   expect_equal "$(sed -n '1p' "$EDITOR_LOG")" '--cwd' 'RPC cwd flag' || return
   expect_equal "$(sed -n '2p' "$EDITOR_LOG")" "$ROOT" 'RPC cwd argv' || return
   expect_equal "$(sed -n '3p' "$EDITOR_LOG")" '--file' 'RPC file flag' || return
   expect_equal "$(sed -n '4p' "$EDITOR_LOG")" "$fixture" 'RPC file argv' || return
   expect_equal "$(sed -n '6p' "$EDITOR_LOG")" '12' 'RPC line argv' || return
   expect_equal "$(sed -n '8p' "$EDITOR_LOG")" '7' 'RPC column argv' || return
+
+  : > "$EDITOR_LOG"
+  printf '%s\n' "$fixture:12:7" | DEVPOD_OPEN_STATUS=0 PATH="$TEST_BIN:$PATH" TMUX=$ref \
+    "$ROOT/scripts/open-selection.sh" --editor "$pane" || return
+  expect_equal "$(sed -n '1p' "$EDITOR_LOG")" '' 'active DevPod skips host RPC' || return
+  printf '%s\n' "$fixture:12:7" | DEVPOD_OPEN_STATUS=2 PATH="$TEST_BIN:$PATH" TMUX=$ref \
+    "$ROOT/scripts/open-selection.sh" --editor "$pane" >/dev/null 2>&1 && {
+      printf 'active DevPod bridge failure fell through or succeeded\n'; return 1;
+    }
 
   PATH="$TEST_BIN:$PATH" TMUX=$ref TMUX_PANE=$pane "$ROOT/scripts/tuicr-review.sh" || return
   expect_equal "$(sed -n '1p' "$REVIEW_LOG")" 'start' 'review launcher command' || return

@@ -195,11 +195,15 @@ red. Synchronize-panes alone intentionally keeps the normal blue focus frame.
 | `prefix + r` | reload `tmux.conf`                               | config |
 | `F12`        | OFF mode — every tmux key off, for a nested tmux | config |
 
-The `Alt-Space` palette also has **review current repository**, which starts or focuses a private
-`tuicr` review through `~/.config/tuicr/tuicr-round`, and **show documentation**, which pages this
-README in place. These are the two `!`-prefixed raw host workflows; the remaining entries are
-curated tmux commands (`eval tmux …`). The palette remains `60% × 55%`; only the selected `tuicr`
-review reopens as a dedicated `95% × 95%` popup.
+The `Alt-Space` palette also has **editor: DevPod** and **editor: host**. They replace exactly the
+single pane in the current dev session's `editor` window; agent, Git, LazyGit and tuicr stay on the
+host. DevPod uses `~/.config/nvim/scripts/devpod-nvim`, preserves the stable `editor` window name,
+and shows `DevPod · provider · project` in the pane frame. Exiting container Neovim leaves that pane
+dead under `remain-on-exit`; it never relaunches itself. **review current repository** starts or
+focuses a private `tuicr` review, while **show documentation** pages this README. Those latter two
+are the `!`-prefixed raw host workflows; all other entries are curated tmux commands
+(`eval tmux …`). The palette remains `60% × 55%`; only tuicr reopens as a dedicated `95% × 95%`
+popup.
 
 `prefix + f` replaces `find-window` only while tmux-fingers is usable; otherwise the default is
 restored. `Alt-f` is deliberately not a tmux root binding, so shells keep their native forward-word
@@ -235,9 +239,11 @@ time the config is sourced_.
 
 Copy-mode `o` / `C-o` are intentionally config-owned. `scripts/open-selection.sh` validates the
 selection once and resolves relative paths from the source pane. System-open uses the host opener;
-editor-open sends `file:line:column` to the one live Neovim registered for that repository through
-`~/.config/nvim/scripts/nvim-review-open`. Missing or ambiguous editors fail visibly and never
-launch another Neovim; this does not justify a fifth submodule.
+editor-open sends `file:line:column` first through the active DevPod mapping. It consults
+`~/.config/nvim/scripts/nvim-review-open` only when the DevPod launcher returns its exact “no active
+editor” status. An active-but-unreachable or ambiguous bridge fails visibly instead of opening the
+same path in a second editor. Neither helper ever launches an unregistered Neovim; this does not
+justify a fifth submodule.
 
 Three replaced hand-written code: `fuzzback.sh` and `grab.sh` were reimplementations of
 `tmux-fuzzback` and `extrakto` and are gone. **`tmux-sessionist` was tried and rejected** — its

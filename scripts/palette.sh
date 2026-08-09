@@ -33,6 +33,8 @@ items() {   # "tmux command<TAB>label" (printf recycles the format per pair)
     'clock-mode'                                                'clock' \
     'detach-client'                                            'detach' \
     'source-file ~/.config/tmux/tmux.conf'                     'reload config' \
+    'run-shell "~/.config/tmux/scripts/devpod-editor.sh up '\''#{pane_id}'\''"'   'editor: DevPod' \
+    'run-shell "~/.config/tmux/scripts/devpod-editor.sh host '\''#{pane_id}'\''"' 'editor: host' \
     '!~/.config/tmux/scripts/tuicr-review.sh'                  'review current repository (tuicr)' \
     '!less ~/.config/tmux/README.md'                           'show documentation (README)' \
     'set -g @thm_flavor latte     \; run-shell "~/.config/tmux/scripts/theme.sh"'     'theme: latte (light)' \
