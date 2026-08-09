@@ -195,10 +195,11 @@ red. Synchronize-panes alone intentionally keeps the normal blue focus frame.
 | `prefix + r` | reload `tmux.conf`                               | config |
 | `F12`        | OFF mode — every tmux key off, for a nested tmux | config |
 
-The `Alt-Space` palette also has a **show documentation** entry — it pages this same README in
-place, inside the palette's own popup. Every other palette action is a curated tmux command
-(`eval tmux …`); this one is the one exception, a `!`-prefixed raw shell command instead, because
-`display-popup` cannot be nested — asked for one from inside another, tmux opens neither.
+The `Alt-Space` palette also has **review current repository**, which starts or focuses a private
+`tuicr` review through `~/.config/tuicr/tuicr-round`, and **show documentation**, which pages this
+README in place. These are the two `!`-prefixed raw host workflows; the remaining entries are
+curated tmux commands (`eval tmux …`). The palette remains `60% × 55%`; only the selected `tuicr`
+review reopens as a dedicated `95% × 95%` popup.
 
 `prefix + f` replaces `find-window` only while tmux-fingers is usable; otherwise the default is
 restored. `Alt-f` is deliberately not a tmux root binding, so shells keep their native forward-word
@@ -233,8 +234,10 @@ until it exists — its own loader would otherwise fire a network installer in t
 time the config is sourced_.
 
 Copy-mode `o` / `C-o` are intentionally config-owned. `scripts/open-selection.sh` validates the
-selection once, resolves relative paths from the source pane, and dispatches to the system opener
-or the runtime `$EDITOR`; this does not justify a fifth submodule.
+selection once and resolves relative paths from the source pane. System-open uses the host opener;
+editor-open sends `file:line:column` to the one live Neovim registered for that repository through
+`~/.config/nvim/scripts/nvim-review-open`. Missing or ambiguous editors fail visibly and never
+launch another Neovim; this does not justify a fifth submodule.
 
 Three replaced hand-written code: `fuzzback.sh` and `grab.sh` were reimplementations of
 `tmux-fuzzback` and `extrakto` and are gone. **`tmux-sessionist` was tried and rejected** — its

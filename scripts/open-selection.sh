@@ -5,12 +5,11 @@
 # the source pane's cwd rather than from this helper or the tmux server.
 #
 # --system passes http/https URLs directly to open(1) or xdg-open(1). Every other target must be
-# an existing path. --editor resolves $EDITOR at invocation time and opens the path in a new tmux
-# window; a missing path is reported instead of becoming an empty editor buffer.
+# an existing path. --editor sends one opaque request to the already-registered Neovim for this
+# repository; it fails visibly rather than launching a second editor.
 #
 # THE SELECTION IS UNTRUSTED. It is whatever happened to be on screen. Never splice it, the pane
-# id, the cwd, or an editor name into an unquoted shell fragment. The system opener receives one
-# argv directly; the editor command is single-quoted with q() before tmux hands it to a shell.
+# id, the cwd, or a target into an unquoted shell fragment. Every helper receives direct argv.
 set -u
 
 say() {
@@ -60,11 +59,13 @@ sel=$(printf '%s' "$sel" | sed \
 # file:line[:column] is shared by both modes. URLs are excluded explicitly so a port such as
 # https://localhost:8443 is never mistaken for an editor line number.
 line=''
+column=''
 case "$sel" in
   http://*|https://*) ;;
   *)
     cand_line=$(printf '%s' "$sel" | sed -n 's/^.*:\([0-9][0-9]*\):[0-9][0-9]*$/\1/p')
     if [ -n "$cand_line" ]; then
+      column=$(printf '%s' "$sel" | sed -n 's/^.*:[0-9][0-9]*:\([0-9][0-9]*\)$/\1/p')
       cand_file=$(printf '%s' "$sel" | sed 's/:[0-9][0-9]*:[0-9][0-9]*$//')
     else
       cand_line=$(printf '%s' "$sel" | sed -n 's/^.*:\([0-9][0-9]*\)$/\1/p')
@@ -112,32 +113,22 @@ if [ "$mode" = --system ]; then
   exit $?
 fi
 
-# Resolve the editor NOW, not while tmux.conf is parsed. Treat the value as one executable name,
-# never as a shell fragment with flags: command -v validates it, and q() quotes the resolved path.
-editor=${EDITOR:-}
-[ -n "$editor" ] || editor=$(tmux show-environment -g EDITOR 2>/dev/null | sed -n 's/^EDITOR=//p')
-if [ -n "$editor" ]; then
-  editor_path=$(command -v "$editor" 2>/dev/null) || {
-    say "EDITOR is not an executable: $editor"
-    exit 1
-  }
-elif command -v nvim >/dev/null 2>&1; then
-  editor_path=$(command -v nvim)
-elif command -v vi >/dev/null 2>&1; then
-  editor_path=$(command -v vi)
-else
-  say "no editor found"
+rpc_helper=${HOME:-}/.config/nvim/scripts/nvim-review-open
+if [ ! -x "$rpc_helper" ]; then
+  say "Neovim RPC helper is not executable: $rpc_helper"
   exit 1
 fi
 
-q() { printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"; }
-
-# `--` stops an option-like filename being read as an editor flag; +N is numeric and validated by
-# the parser above, and must precede it. new-window still receives one safely quoted shell command.
-if [ -n "$line" ]; then
-  cmd="$(q "$editor_path") +$line -- $(q "$target")"
-else
-  cmd="$(q "$editor_path") -- $(q "$target")"
+rpc_output=$(
+  "$rpc_helper" \
+    --cwd "$dir" \
+    --file "$target" \
+    --line "${line:-1}" \
+    --column "${column:-1}" 2>&1
+)
+rpc_status=$?
+if [ "$rpc_status" -ne 0 ]; then
+  [ -n "$rpc_output" ] || rpc_output="registered editor rejected the request"
+  say "$rpc_output"
+  exit "$rpc_status"
 fi
-
-tmux new-window -c "$dir" "$cmd"

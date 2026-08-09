@@ -64,8 +64,9 @@ TEST_HOME=$TMP/home
 TEST_STATE=$TMP/state
 TEST_SOCKETS=$TMP/sockets
 TEST_BIN=$TMP/bin
+PALETTE_BIN=$TMP/palette-bin
 TMUX_REAL=$(command -v tmux)
-mkdir -p "$TEST_HOME/.config" "$TEST_STATE" "$TEST_SOCKETS" "$TEST_BIN" || exit 1
+mkdir -p "$TEST_HOME/.config" "$TEST_STATE" "$TEST_SOCKETS" "$TEST_BIN" "$PALETTE_BIN" || exit 1
 chmod 700 "$TEST_SOCKETS" || exit 1
 ln -s "$ROOT" "$TEST_HOME/.config/tmux" || exit 1
 
@@ -164,6 +165,41 @@ parse_and_invariants() {
     printf '%s\n' "$parse_out"
     return 1
   }
+  grep -F "'!~/.config/tmux/scripts/tuicr-review.sh'" "$ROOT/scripts/palette.sh" >/dev/null || {
+    printf 'stable tuicr review palette entry is absent\n'
+    return 1
+  }
+  grep -F "TMUX_PALETTE_SOURCE_PATH=\$(pwd -P)" "$ROOT/scripts/palette.sh" >/dev/null || {
+    printf 'palette source path capture is absent\n'
+    return 1
+  }
+  # shellcheck disable=SC2016
+  grep -F 'selection=$(items | fzf' "$ROOT/scripts/palette.sh" >/dev/null || {
+    printf 'palette selection capture is absent\n'
+    return 1
+  }
+  # shellcheck disable=SC2016
+  grep -F 'eval "${command#?}"' \
+    "$ROOT/scripts/palette.sh" >/dev/null || {
+    printf 'palette raw-command execution is absent\n'
+    return 1
+  }
+  if grep -F 'enter:become(' "$ROOT/scripts/palette.sh" >/dev/null; then
+    printf 'palette still runs interactive commands inside fzf become\n'
+    return 1
+  fi
+  grep -F 'palette-popup.sh #{q:client_name} #{q:pane_id}' "$ROOT/tmux.conf" >/dev/null || {
+    printf 'palette dispatcher binding is absent\n'
+    return 1
+  }
+  grep -F -- '-w 60% -h 55%' "$ROOT/scripts/palette-popup.sh" >/dev/null || {
+    printf 'palette popup is not 60%% x 55%%\n'
+    return 1
+  }
+  grep -F -- '-w 95% -h 95%' "$ROOT/scripts/palette-popup.sh" >/dev/null || {
+    printf 'review popup is not 95%% x 95%%\n'
+    return 1
+  }
 
   value=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" show-options -gqv default-command)
   expect_equal "$value" '' 'global default-command' || return
@@ -223,9 +259,46 @@ write_fakes() {
   # Fixture variables expand when the generated fake runs, not while this harness writes it.
   # shellcheck disable=SC2016
   printf '%s\n' '#!/bin/sh' 'printf "%s\\n" "$1" > "$OPEN_LOG"' > "$TEST_BIN/open"
+  mkdir -p "$TEST_HOME/.config/nvim/scripts" "$TEST_HOME/.config/tuicr" || return
   # shellcheck disable=SC2016
-  printf '%s\n' '#!/bin/sh' 'printf "%s\\n" "$@" > "$EDITOR_LOG"' 'exec sleep 5' > "$TEST_BIN/fake-editor"
-  chmod +x "$TEST_BIN/ssh" "$TEST_BIN/open" "$TEST_BIN/fake-editor"
+  printf '%s\n' '#!/bin/sh' 'printf "%s\\n" "$@" > "$EDITOR_LOG"' \
+    > "$TEST_HOME/.config/nvim/scripts/nvim-review-open"
+  # shellcheck disable=SC2016
+  printf '%s\n' '#!/bin/sh' 'printf "%s\\n" "$@" > "$REVIEW_LOG"' \
+    > "$TEST_HOME/.config/tuicr/tuicr-round"
+  # Select only the stable tuicr row from palette input. palette.sh must wait
+  # for fzf to exit before it executes the raw command itself.
+  # shellcheck disable=SC2016
+  printf '%s\n' '#!/bin/sh' \
+    'tab=$(printf "\t")' \
+    'while IFS="$tab" read -r command label; do' \
+    '  [ "$label" = "review current repository (tuicr)" ] || continue' \
+    '  printf "%s\t%s\n" "$command" "$label"' \
+    '  exit 0' \
+    'done' \
+    'exit 1' > "$TEST_BIN/fzf"
+  # This fake validates the popup dispatcher without requiring an attached
+  # client in the headless gate. The small palette either returns fzf's normal
+  # cancellation status or its reserved review selection status; the large
+  # review popup then succeeds only for the latter.
+  # shellcheck disable=SC2016
+  printf '%s\n' '#!/bin/sh' \
+    'case "$1" in' \
+    '  display-message) printf "%s\n" "$PALETTE_REPO"; exit 0 ;;' \
+    '  display-popup)' \
+    '    for argument in "$@"; do printf "<%s>" "$argument"; done >> "$PALETTE_POPUP_LOG"' \
+    '    printf "\n" >> "$PALETTE_POPUP_LOG"' \
+    '    case "$*" in' \
+    '      *"/palette.sh"*) [ "${PALETTE_CANCEL:-}" = 1 ] && exit 130; exit 42 ;;' \
+    '      *"/tuicr-review.sh"*) exit 0 ;;' \
+    '    esac' \
+    '    exit 3 ;;' \
+    'esac' \
+    'exit 4' > "$PALETTE_BIN/tmux"
+  chmod +x "$TEST_BIN/ssh" "$TEST_BIN/open" "$TEST_BIN/fzf" \
+    "$PALETTE_BIN/tmux" \
+    "$TEST_HOME/.config/nvim/scripts/nvim-review-open" \
+    "$TEST_HOME/.config/tuicr/tuicr-round"
 }
 
 ssh_behaviour() {
@@ -315,18 +388,59 @@ pane_helpers_and_status() {
   fixture=$ROOT/tmux.conf
   OPEN_LOG=$TMP/open.log
   EDITOR_LOG=$TMP/editor.log
-  export OPEN_LOG EDITOR_LOG
-  # The editor runs in a new pane created by the server, so publish the fixture path to the server
-  # environment as well as this helper process.
-  "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-environment -g EDITOR_LOG "$EDITOR_LOG" || return
+  REVIEW_LOG=$TMP/review.log
+  export OPEN_LOG EDITOR_LOG REVIEW_LOG
   printf '%s\n' 'https://example.invalid/path' | PATH="$TEST_BIN:$PATH" TMUX=$ref \
     "$ROOT/scripts/open-selection.sh" --system "$pane" || return
   expect_equal "$(sed -n '1p' "$OPEN_LOG")" 'https://example.invalid/path' 'system opener argv' || return
-  printf '%s\n' "$fixture:12" | PATH="$TEST_BIN:$PATH" TMUX=$ref EDITOR=fake-editor \
+  printf '%s\n' "$fixture:12:7" | PATH="$TEST_BIN:$PATH" TMUX=$ref \
     "$ROOT/scripts/open-selection.sh" --editor "$pane" || return
-  sleep 1
-  [ -s "$EDITOR_LOG" ] || { printf 'editor fixture was not invoked\n'; return 1; }
-  expect_contains "$(cat "$EDITOR_LOG")" "$fixture" 'editor target argv' || return
+  expect_equal "$(sed -n '1p' "$EDITOR_LOG")" '--cwd' 'RPC cwd flag' || return
+  expect_equal "$(sed -n '2p' "$EDITOR_LOG")" "$ROOT" 'RPC cwd argv' || return
+  expect_equal "$(sed -n '3p' "$EDITOR_LOG")" '--file' 'RPC file flag' || return
+  expect_equal "$(sed -n '4p' "$EDITOR_LOG")" "$fixture" 'RPC file argv' || return
+  expect_equal "$(sed -n '6p' "$EDITOR_LOG")" '12' 'RPC line argv' || return
+  expect_equal "$(sed -n '8p' "$EDITOR_LOG")" '7' 'RPC column argv' || return
+
+  PATH="$TEST_BIN:$PATH" TMUX=$ref TMUX_PANE=$pane "$ROOT/scripts/tuicr-review.sh" || return
+  expect_equal "$(sed -n '1p' "$REVIEW_LOG")" 'start' 'review launcher command' || return
+  expect_equal "$(sed -n '2p' "$REVIEW_LOG")" '--repo' 'review repo flag' || return
+  expect_equal "$(sed -n '3p' "$REVIEW_LOG")" "$ROOT" 'review repo argv' || return
+  expect_equal "$(sed -n '4p' "$REVIEW_LOG")" '--open' 'review open flag' || return
+
+  (
+    cd "$ROOT" || exit 1
+    PATH="$TEST_BIN:$PATH" TMUX=$ref TMUX_PANE='%999' "$ROOT/scripts/palette.sh"
+  )
+  palette_status=$?
+  expect_equal "$palette_status" 42 'palette review dispatch status' || return
+
+  PALETTE_REPO=$ROOT
+  PALETTE_POPUP_LOG=$TMP/palette-popup.log
+  export PALETTE_REPO PALETTE_POPUP_LOG
+  PATH="$PALETTE_BIN:$PATH" "$ROOT/scripts/palette-popup.sh" /dev/ttys999 %999 || return
+  palette_call=$(sed -n '1p' "$PALETTE_POPUP_LOG")
+  review_call=$(sed -n '2p' "$PALETTE_POPUP_LOG")
+  expect_contains "$palette_call" \
+    "<-w><60%><-h><55%><-T>< palette ><$ROOT/scripts/palette.sh>" \
+    'small palette popup dispatch' || return
+  expect_contains "$review_call" \
+    "<-w><95%><-h><95%><-T>< review ><-e><TMUX_PALETTE_SOURCE_PATH=$ROOT><$ROOT/scripts/tuicr-review.sh>" \
+    'large review popup dispatch' || return
+
+  PALETTE_POPUP_LOG=$TMP/palette-cancel.log
+  export PALETTE_POPUP_LOG
+  PALETTE_CANCEL=1 PATH="$PALETTE_BIN:$PATH" \
+    "$ROOT/scripts/palette-popup.sh" /dev/ttys999 %999 || {
+      printf 'palette cancellation returned an error\n'
+      return 1
+    }
+  cancel_call=$(sed -n '1p' "$PALETTE_POPUP_LOG")
+  expect_contains "$cancel_call" \
+    "<-w><60%><-h><55%><-T>< palette ><$ROOT/scripts/palette.sh>" \
+    'cancelled palette popup dispatch' || return
+  expect_equal "$(sed -n '2p' "$PALETTE_POPUP_LOG")" '' \
+    'cancelled palette skips review popup' || return
 
   TMUX=$ref "$ROOT/scripts/session-save.sh" || return
   "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-option -t second @layout dev || return
