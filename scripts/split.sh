@@ -2,8 +2,10 @@
 # split.sh — the single split entrypoint for bindings and the command palette.
 #
 # Usage: split.sh <pane-id> [auto|vertical|horizontal]
-# `auto` splits the longer visual axis for a fibonacci-like spiral. Every mode enforces the
-# window-scoped @no_split lock here, so adding a new caller cannot accidentally bypass it.
+# `auto` splits the larger fraction of the containing window for a fibonacci-like spiral. A full
+# pane goes left/right, either half then goes top/bottom, and a 2x2 cell goes left/right again.
+# Every mode enforces both the named tool-window policy and the window-scoped @no_split lock here,
+# so adding a new caller cannot accidentally bypass either one.
 set -u
 
 usage() {
@@ -40,7 +42,11 @@ actual=$(tmux display-message -p -t "$pane" '#{pane_id}' 2>/dev/null) || {
   exit 1
 }
 
-locked=$(tmux display-message -p -t "$pane" '#{@no_split}' 2>/dev/null || true)
+window_name=$(tmux display-message -p -t "$pane" '#{window_name}') || exit
+case "$window_name" in
+  agent|editor|git) locked=1 ;;
+  *) locked=$(tmux display-message -p -t "$pane" '#{@no_split}' 2>/dev/null || true) ;;
+esac
 if [ -n "$locked" ] && [ "$locked" != 0 ]; then
   tmux display-message 'this pane is locked (no splits)'
   exit 1
@@ -58,8 +64,12 @@ case "$mode" in
   auto)
     width=$(tmux display-message -p -t "$pane" '#{pane_width}') || exit
     height=$(tmux display-message -p -t "$pane" '#{pane_height}') || exit
-    # Cells are approximately twice as tall as wide, so weigh height before comparing.
-    if [ "$width" -gt "$((height * 2))" ]; then
+    window_width=$(tmux display-message -p -t "$pane" '#{window_width}') || exit
+    window_height=$(tmux display-message -p -t "$pane" '#{window_height}') || exit
+    # Compare occupied fractions without floating point:
+    #   pane_width / window_width >= pane_height / window_height
+    # Raw cell dimensions made the second split left/right again on ultrawide terminals.
+    if [ "$((width * window_height))" -ge "$((height * window_width))" ]; then
       direction=-h
     else
       direction=-v

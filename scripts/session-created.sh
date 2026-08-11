@@ -2,7 +2,7 @@
 # session-created.sh — re-apply protected and visual per-session state.
 # Wired to the `session-created` and `session-renamed` hooks and run once when the config loads.
 #
-# Two jobs, for every live session:
+# Three jobs, for every live session:
 #   1) SSH shield (second layer): for every "ssh_<host>" session set a per-session
 #      `default-command` that enters the host over SSH. tssh stores the exact destination in
 #      session-scoped @ssh_host because a display-safe session name is lossy; sessions created
@@ -11,6 +11,8 @@
 #      NOT leak to other (local) sessions. NEVER set it with `set -g` — every local session would SSH.
 #   2) Per-session colour: publish this name's deterministic colour (session-color.sh) as the
 #      session-scoped `@pill` user option, which status-right reads in each client's session.
+#   3) Tool-window policy: repair `agent`, `editor` and `git` windows in sessions created before
+#      the current config by applying both remain-on-exit and the shared split lock.
 #
 # WHY IT TAKES NO ARGUMENTS. The hooks used to pass `#{hook_session_name}`, which tmux interpolates
 # RAW into the shell command line — so a session called "my proj" reached the script as $1="my"
@@ -72,6 +74,23 @@ apply() {
     [ -n "$bg" ] && tmux set-option -t "$s" @pill "$bg"
     [ -n "$ink" ] && tmux set-option -t "$s" @pill_ink "$ink"
   }
+
+  # Window ids come from tmux, never from a user-entered name on a shell command line. Query each
+  # name separately so tabs, spaces or punctuation inside some other window name cannot corrupt a
+  # delimiter-based parser. The split helper also guards these names directly; the option keeps the
+  # policy visible to tmux and to diagnostics, while remain-on-exit preserves a failed tool pane.
+  tmux list-windows -t "$s" -F '#{window_id}' 2>/dev/null | while IFS= read -r window_id; do
+    case "$window_id" in
+      @*[!0-9]*|'@'|[!@]*) continue ;;
+    esac
+    window_name=$(tmux display-message -p -t "$window_id" '#{window_name}' 2>/dev/null) || continue
+    case "$window_name" in
+      agent|editor|git)
+        tmux set-option -w -t "$window_id" remain-on-exit on
+        tmux set-option -w -t "$window_id" @no_split 1
+        ;;
+    esac
+  done
 }
 
 tmux list-sessions -F '#{session_name}' 2>/dev/null | while IFS= read -r s; do

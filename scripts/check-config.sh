@@ -208,6 +208,18 @@ parse_and_invariants() {
     printf 'review popup is not 95%% x 95%%\n'
     return 1
   }
+  for tool_window in agent editor git; do
+    grep -Eq "tmux set-option -w -t \"\\\$SESS:${tool_window}\"[[:space:]]+remain-on-exit on" \
+      "$ROOT/sessions/dev.conf" || {
+        printf '%s tool window does not retain its pane on application exit\n' "$tool_window"
+        return 1
+      }
+    grep -Eq "tmux set-option -w -t \"\\\$SESS:${tool_window}\"[[:space:]]+@no_split 1" \
+      "$ROOT/sessions/dev.conf" || {
+        printf '%s tool window is not protected from splits\n' "$tool_window"
+        return 1
+      }
+  done
 
   value=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" show-options -gqv default-command)
   expect_equal "$value" '' 'global default-command' || return
@@ -344,10 +356,25 @@ devpod_editor_behaviour() {
   ) || return
   expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" show-option -pqv -t "$editor_pane" remain-on-exit)" on \
     'created editor pane remains visible on exit' || return
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" show-option -wqv -t "$editor_window" @no_split)" 1 \
+    'created editor window rejects splits' || return
   "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$source_pane" '#{pane_id}' >/dev/null || {
     printf 'creating the editor window destroyed the source pane\n'
     return 1
   }
+
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" respawn-pane -k -t "$editor_pane" false || return
+  attempts=0
+  while [ "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$editor_pane" \
+    '#{pane_dead}' 2>/dev/null || true)" != 1 ] && [ "$attempts" -lt 100 ]; do
+    sleep 0.02
+    attempts=$((attempts + 1))
+  done
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$editor_pane" '#{pane_dead}')" 1 \
+    'editor pane becomes dead instead of disappearing' || return
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" list-windows -t editor-create -F '#{window_name}' |
+    awk '$0 == "editor" { count++ } END { print count + 0 }')" 1 \
+    'editor window survives application exit' || return
 
   PATH="$TEST_BIN:$PATH" TMUX=$ref "$ROOT/scripts/devpod-editor.sh" host "$source_pane" || return
   expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$editor_window" '#{pane_id}')" \
@@ -450,7 +477,8 @@ pane_helpers_and_status() {
   expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$pane" '#{pane_pipe}')" 0 \
     'pane logging disabled' || return
 
-  "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-session -d -s splits -c "$ROOT" 'sleep 120' || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-session -d -x 240 -y 40 \
+    -s splits -c "$ROOT" 'sleep 120' || return
   split_pane=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t splits '#{pane_id}') || return
   "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-option -w -t splits @no_split 1 || return
   TMUX=$ref "$ROOT/scripts/split.sh" "$split_pane" auto >/dev/null 2>&1 && {
@@ -459,11 +487,79 @@ pane_helpers_and_status() {
   expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" list-panes -t splits -F '#{pane_id}' | wc -l | tr -d ' ')" 1 \
     'locked pane count' || return
   "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-option -w -u -t splits @no_split || return
-  TMUX=$ref "$ROOT/scripts/split.sh" "$split_pane" horizontal || return
-  TMUX=$ref "$ROOT/scripts/split.sh" "$split_pane" vertical || return
+
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" rename-window -t "$split_pane" editor || return
+  TMUX=$ref "$ROOT/scripts/split.sh" "$split_pane" auto >/dev/null 2>&1 && {
+    printf 'named editor window accepted a split without @no_split\n'; return 1;
+  }
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" list-panes -t splits -F '#{pane_id}' | wc -l | tr -d ' ')" 1 \
+    'named tool-window split guard' || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" rename-window -t "$split_pane" term || return
+
+  # The deliberately ultrawide 240x40 geometry reproduced the regression: comparing raw cell
+  # dimensions split the selected right half left/right a second time. Window-relative fractions
+  # must instead produce left/right -> top/bottom -> top/bottom -> left/right.
   TMUX=$ref "$ROOT/scripts/split.sh" "$split_pane" auto || return
-  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" list-panes -t splits -F '#{pane_id}' | wc -l | tr -d ' ')" 4 \
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" list-panes -t splits -F '#{pane_left}' | sort -nu | wc -l | tr -d ' ')" 2 \
+    'first Fibonacci split columns' || return
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" list-panes -t splits -F '#{pane_top}' | sort -nu | wc -l | tr -d ' ')" 1 \
+    'first Fibonacci split rows' || return
+  left_pane=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" list-panes -t splits -F '#{pane_left} #{pane_id}' |
+    sort -n | sed -n '1s/^[0-9][0-9]* //p') || return
+  right_pane=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" list-panes -t splits -F '#{pane_left} #{pane_id}' |
+    sort -n | sed -n '$s/^[0-9][0-9]* //p') || return
+  [ -n "$left_pane" ] && [ -n "$right_pane" ] || return
+
+  TMUX=$ref "$ROOT/scripts/split.sh" "$right_pane" auto || return
+  right_left=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$right_pane" '#{pane_left}') || return
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" list-panes -t splits -F '#{pane_left} #{pane_top}' |
+    awk -v left="$right_left" '$1 == left { seen[$2] = 1 } END { for (row in seen) count++; print count + 0 }')" 2 \
+    'selected right half splits into rows' || return
+
+  TMUX=$ref "$ROOT/scripts/split.sh" "$left_pane" auto || return
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" list-panes -t splits -F '#{pane_left}:#{pane_top}' |
+    sort -u | wc -l | tr -d ' ')" 4 'Fibonacci 2x2 grid cells' || return
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" list-panes -t splits -F '#{pane_left}' | sort -nu | wc -l | tr -d ' ')" 2 \
+    'Fibonacci 2x2 grid columns' || return
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" list-panes -t splits -F '#{pane_top}' | sort -nu | wc -l | tr -d ' ')" 2 \
+    'Fibonacci 2x2 grid rows' || return
+
+  grid_pane=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" list-panes -t splits \
+    -F '#{pane_left} #{pane_top} #{pane_id}' | sort -n -k1,1 -k2,2 |
+    sed -n '1s/^[0-9][0-9]* [0-9][0-9]* //p') || return
+  [ -n "$grid_pane" ] || return
+  TMUX=$ref "$ROOT/scripts/split.sh" "$grid_pane" auto || return
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" list-panes -t splits -F '#{pane_left}' | sort -nu | wc -l | tr -d ' ')" 3 \
+    'fourth Fibonacci split adds a column' || return
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" list-panes -t splits -F '#{pane_top}' | sort -nu | wc -l | tr -d ' ')" 2 \
+    'fourth Fibonacci split preserves rows' || return
+
+  TMUX=$ref "$ROOT/scripts/split.sh" "$left_pane" horizontal || return
+  TMUX=$ref "$ROOT/scripts/split.sh" "$right_pane" vertical || return
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" list-panes -t splits -F '#{pane_id}' | wc -l | tr -d ' ')" 7 \
     'all unlocked split modes' || return
+
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-session -d -s tool-policy -n agent \
+    -c "$ROOT" 'sleep 120' || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-window -d -t tool-policy: -n editor \
+    -c "$ROOT" 'sleep 120' || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-window -d -t tool-policy: -n git \
+    -c "$ROOT" 'sleep 120' || return
+  for tool_window in agent editor git; do
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-option -w -u -t "tool-policy:$tool_window" \
+      @no_split 2>/dev/null || true
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-option -w -t "tool-policy:$tool_window" \
+      remain-on-exit off || return
+  done
+  TMUX=$ref "$ROOT/scripts/session-created.sh" || return
+  for tool_window in agent editor git; do
+    expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" show-option -wqv \
+      -t "tool-policy:$tool_window" @no_split)" 1 \
+      "$tool_window live split-policy repair" || return
+    expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" show-option -wqv \
+      -t "tool-policy:$tool_window" remain-on-exit)" on \
+      "$tool_window live remain-on-exit repair" || return
+  done
 
   "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-session -d -s 'hash#one' -c "$ROOT" 'sleep 120' || return
   "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-session -d -s second -c "$ROOT" 'sleep 120' || return

@@ -11,7 +11,7 @@ cat <<'EOF' | fzf $(fzf_style) --info=inline --no-sort --prompt 'keys ' \
     --header 'filter · Esc closes'
 NAVIGATION
   M-h/j/k/l     move focus between panes (or nvim splits)
-  M-n           split (Zellij-like, longer axis)  M-t   new window in the cwd
+  M-n           Fibonacci split of selected pane  M-t   new window in the cwd
   M-1..9        go to window N                    M-; / M-'   previous / next window
   M-, / M-.     previous / next session           M-s   session tree
   M--           last session (toggle)             M-0 / prefix 0  always jump to main

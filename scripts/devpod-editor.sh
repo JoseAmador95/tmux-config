@@ -64,6 +64,7 @@ case "$editor_count" in
 esac
 
 tmux set-option -p -t "$editor_pane" remain-on-exit on
+tmux set-option -w -t "$editor_window" @no_split 1
 
 if [ "$action" = host ]; then
   tmux select-pane -t "$editor_pane" -T '' 2>/dev/null || true

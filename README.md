@@ -139,8 +139,13 @@ for the current window, so its yellow marker appears when that window goes quiet
 
 Pane logs use the collision-resistant, sanitized name
 `~/tmux-<safe-session>-w<window-index>-p<pane-id>.log`; the session name is never evaluated by a
-shell. `Alt-n`, `prefix + "` and `prefix + %` all share the same split guard, so the locked
-`agent`, `editor` and `git` tool windows reject every split route consistently.
+shell. `Alt-n` recalculates from the selected pane every time, comparing the fraction of window
+width it occupies with its fraction of window height. A full pane splits left/right; splitting
+either half then goes top/bottom, splitting the other half produces a 2×2 grid, and splitting one
+of those cells goes left/right again. This is independent of the terminal's aspect ratio.
+`Alt-n`, `prefix + "` and `prefix + %` all share the same guard: `agent`, `editor` and `git` are
+protected by name as well as `@no_split`, while a config reload repairs those options and
+`remain-on-exit` on already-open tool windows.
 
 The line between two panes is `pane-border-lines heavy` — a bolder weight than tmux's thin default,
 still a single glyph rather than a block, with `@thm_line` keeping inactive frames quiet (see
