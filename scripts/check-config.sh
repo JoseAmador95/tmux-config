@@ -303,13 +303,14 @@ write_fakes() {
   # shellcheck disable=SC2016
   printf '%s\n' '#!/bin/sh' 'printf "%s\\n" "$@" > "$REVIEW_LOG"' \
     > "$TEST_HOME/.config/tuicr/tuicr-round"
-  # Select only the stable tuicr row from palette input. palette.sh must wait
+  # Select one requested stable row from palette input. palette.sh must wait
   # for fzf to exit before it executes the raw command itself.
   # shellcheck disable=SC2016
   printf '%s\n' '#!/bin/sh' \
     'tab=$(printf "\t")' \
+    'wanted=${PALETTE_SELECTION:-review current repository (tuicr)}' \
     'while IFS="$tab" read -r command label; do' \
-    '  [ "$label" = "review current repository (tuicr)" ] || continue' \
+    '  [ "$label" = "$wanted" ] || continue' \
     '  printf "%s\t%s\n" "$command" "$label"' \
     '  exit 0' \
     'done' \
@@ -338,6 +339,63 @@ write_fakes() {
     "$TEST_HOME/.config/nvim/scripts/devpod-nvim" \
     "$TEST_HOME/.config/nvim/scripts/nvim-review-open" \
     "$TEST_HOME/.config/tuicr/tuicr-round"
+}
+
+dev_window_palette_behaviour() {
+  start_plain_server || return
+  ref=$(server_ref) || return
+  write_fakes || return
+
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-session -d -s palette-dev -n agent \
+    -c "$ROOT" 'sleep 120' || return
+  source_pane=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t palette-dev:agent '#{pane_id}'
+  ) || return
+  for target in editor git term; do
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-window -d -t palette-dev: -n "$target" \
+      -c "$ROOT" 'sleep 120' || return
+  done
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-option -t palette-dev @layout dev || return
+
+  for target in agent editor git term; do
+    (
+      cd "$ROOT" || exit 1
+      PALETTE_SELECTION="window: $target" PATH="$TEST_BIN:$PATH" \
+        TMUX=$ref TMUX_PALETTE_SOURCE_PANE=$source_pane "$ROOT/scripts/palette.sh"
+    ) || return
+    expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p \
+      -t palette-dev '#{window_name}')" "$target" "palette selects $target window" || return
+  done
+
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-option -t palette-dev @layout shell || return
+  TMUX=$ref TMUX_PALETTE_SOURCE_PANE=$source_pane \
+    "$ROOT/scripts/dev-window.sh" agent >/dev/null 2>&1 && {
+      printf 'non-dev session accepted dev-window selection\n'
+      return 1
+    }
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-option -t palette-dev @layout dev || return
+
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" kill-window -t palette-dev:term || return
+  TMUX=$ref TMUX_PALETTE_SOURCE_PANE=$source_pane \
+    "$ROOT/scripts/dev-window.sh" term >/dev/null 2>&1 && {
+      printf 'missing dev window was accepted\n'
+      return 1
+    }
+
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-window -d -t palette-dev: -n editor \
+    -c "$ROOT" 'sleep 120' || return
+  TMUX=$ref TMUX_PALETTE_SOURCE_PANE=$source_pane \
+    "$ROOT/scripts/dev-window.sh" editor >/dev/null 2>&1 && {
+      printf 'duplicate dev windows were accepted\n'
+      return 1
+    }
+  TMUX=$ref TMUX_PALETTE_SOURCE_PANE=$source_pane \
+    "$ROOT/scripts/dev-window.sh" shell >/dev/null 2>&1 && {
+      printf 'unknown dev window name was accepted\n'
+      return 1
+    }
+
+  stop_active_server
 }
 
 lazygit_editor_behaviour() {
@@ -717,7 +775,7 @@ pane_helpers_and_status() {
   palette_call=$(sed -n '1p' "$PALETTE_POPUP_LOG")
   review_call=$(sed -n '2p' "$PALETTE_POPUP_LOG")
   expect_contains "$palette_call" \
-    "<-w><60%><-h><55%><-T>< palette ><$ROOT/scripts/palette.sh>" \
+    "<-w><60%><-h><55%><-T>< palette ><-e><TMUX_PALETTE_SOURCE_PANE=%999><$ROOT/scripts/palette.sh>" \
     'small palette popup dispatch' || return
   expect_contains "$review_call" \
     "<-w><95%><-h><95%><-T>< review ><-e><TMUX_PALETTE_SOURCE_PATH=$ROOT><$ROOT/scripts/tuicr-review.sh>" \
@@ -732,7 +790,7 @@ pane_helpers_and_status() {
     }
   cancel_call=$(sed -n '1p' "$PALETTE_POPUP_LOG")
   expect_contains "$cancel_call" \
-    "<-w><60%><-h><55%><-T>< palette ><$ROOT/scripts/palette.sh>" \
+    "<-w><60%><-h><55%><-T>< palette ><-e><TMUX_PALETTE_SOURCE_PANE=%999><$ROOT/scripts/palette.sh>" \
     'cancelled palette popup dispatch' || return
   expect_equal "$(sed -n '2p' "$PALETTE_POPUP_LOG")" '' \
     'cancelled palette skips review popup' || return
@@ -893,6 +951,7 @@ run_check 'real source-file parse and core invariants' parse_and_invariants
 run_check 'detached smoke on a distinct socket' detached_smoke
 run_check 'exact SSH metadata, validation and rename cleanup' ssh_behaviour
 run_check 'DevPod editor window creation, reuse and guards' devpod_editor_behaviour
+run_check 'dev layout palette window selection' dev_window_palette_behaviour
 run_check 'standalone LazyGit editor routing and config isolation' lazygit_editor_behaviour
 run_check 'logging, splits, status, opener and roster behaviour' pane_helpers_and_status
 run_check 'mode-aware active pane frame' mode_frame_behaviour

@@ -11,13 +11,18 @@ set -u
 . "$(cd "$(dirname "$0")" && pwd)/fzf-style.sh"   # --reverse + the shared --color, from the theme
 
 # The popup's TMUX_PANE is a transient pane that cannot be targeted like a
-# normal window pane. Preserve the physical cwd inherited from the source pane
+# normal window pane. palette-popup.sh passes the original pane separately for
+# dev-window navigation. Preserve the physical cwd inherited from that pane
 # before fzf runs so review actions keep the correct repository.
 TMUX_PALETTE_SOURCE_PATH=$(pwd -P) || exit 1
 export TMUX_PALETTE_SOURCE_PATH
 
 items() {   # "tmux command<TAB>label" (printf recycles the format per pair)
   printf '%s\t%s\n' \
+    '!~/.config/tmux/scripts/dev-window.sh agent'              'window: agent' \
+    '!~/.config/tmux/scripts/dev-window.sh editor'             'window: editor' \
+    '!~/.config/tmux/scripts/dev-window.sh git'                'window: git' \
+    '!~/.config/tmux/scripts/dev-window.sh term'               'window: term' \
     'run-shell "~/.config/tmux/scripts/split.sh '\''#{pane_id}'\'' vertical"'   'split down' \
     'run-shell "~/.config/tmux/scripts/split.sh '\''#{pane_id}'\'' horizontal"' 'split right' \
     'new-window -c "#{pane_current_path}"'                      'new window' \

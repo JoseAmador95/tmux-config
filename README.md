@@ -219,6 +219,11 @@ are the `!`-prefixed raw host workflows; all other entries are curated tmux comm
 (`eval tmux …`). The palette remains `60% × 55%`; only tuicr reopens as a dedicated `95% × 95%`
 popup.
 
+The same palette has **window: agent**, **window: editor**, **window: git** and **window: term**.
+Each entry selects the one exact named window in the current `dev` session. It does not create a
+missing window, respawn a dead application or cross into another session; missing, duplicate and
+non-`dev` targets fail visibly.
+
 `prefix + f` replaces `find-window` only while tmux-fingers is usable; otherwise the default is
 restored. `Alt-f` is deliberately not a tmux root binding, so shells keep their native forward-word
 navigation; the separate copy-mode table remains untouched. Copy-mode `o` similarly replaces

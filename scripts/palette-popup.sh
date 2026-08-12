@@ -33,7 +33,7 @@ if [ ! -d "$repo" ]; then
 fi
 
 tmux display-popup -E -c "$client" -d "$repo" -w 60% -h 55% \
-  -T " palette " "$script_dir/palette.sh"
+  -T " palette " -e "TMUX_PALETTE_SOURCE_PANE=$pane" "$script_dir/palette.sh"
 palette_status=$?
 # fzf reports an intentional q/Ctrl-C dismissal as 130. Treat that one status
 # as a normal close so run-shell does not surface it as a tmux command error.
