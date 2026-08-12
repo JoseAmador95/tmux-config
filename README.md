@@ -147,6 +147,14 @@ of those cells goes left/right again. This is independent of the terminal's aspe
 protected by name as well as `@no_split`, while a config reload repairs those options and
 `remain-on-exit` on already-open tool windows.
 
+In the `dev` layout, pressing `e` in the standalone LazyGit window opens the file in that session's
+single `editor` window and focuses it. The route is DevPod-aware: an active container editor owns
+the location; otherwise the already-registered host Neovim receives it. It never starts a second
+editor. LazyGit opened inside Neovim is intentionally separate and keeps its `nvim-remote` preset,
+so `e` opens in the Neovim instance that owns that float. For a `git` pane created before this
+integration, reload tmux, quit LazyGit, and press `prefix + R` once; the revived pane then uses the
+new process-local config. No session restart is required.
+
 The line between two panes is `pane-border-lines heavy` — a bolder weight than tmux's thin default,
 still a single glyph rather than a block, with `@thm_line` keeping inactive frames quiet (see
 [Contrast](#contrast)). Two heavier-handed attempts at this — blank-cell "padding" that turned

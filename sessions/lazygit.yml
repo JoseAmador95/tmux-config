@@ -1,0 +1,7 @@
+# Appended only by scripts/lazygit-window.sh for the standalone dev-layout
+# LazyGit. The Neovim-embedded instance has its own later nvim-remote overlay.
+promptToReturnFromSubprocess: false
+os:
+  edit: '~/.config/tmux/scripts/lazygit-edit.sh -- {{filename}}'
+  editAtLine: '~/.config/tmux/scripts/lazygit-edit.sh --line {{line}} -- {{filename}}'
+  editInTerminal: false

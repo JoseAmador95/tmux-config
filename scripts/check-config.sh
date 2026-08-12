@@ -292,6 +292,14 @@ write_fakes() {
     'exit "${DEVPOD_OPEN_STATUS:-3}"' \
     > "$TEST_HOME/.config/nvim/scripts/devpod-nvim"
   printf '%s\n' '#!/bin/sh' 'exec sleep 120' > "$TEST_BIN/nvim"
+  # The standalone LazyGit wrapper first asks for the normal user config, then
+  # execs the same binary with a process-local LG_CONFIG_FILE list.
+  # shellcheck disable=SC2016
+  printf '%s\n' '#!/bin/sh' \
+    'if [ "${1:-}" = --print-config-dir ]; then printf "%s\n" "$LAZYGIT_CONFIG_DIR"; exit 0; fi' \
+    'printf "%s\n" "${LG_CONFIG_FILE:-}" > "$LAZYGIT_LOG"' \
+    'printf "%s\n" "$@" >> "$LAZYGIT_LOG"' \
+    > "$TEST_BIN/lazygit"
   # shellcheck disable=SC2016
   printf '%s\n' '#!/bin/sh' 'printf "%s\\n" "$@" > "$REVIEW_LOG"' \
     > "$TEST_HOME/.config/tuicr/tuicr-round"
@@ -325,10 +333,101 @@ write_fakes() {
     'esac' \
     'exit 4' > "$PALETTE_BIN/tmux"
   chmod +x "$TEST_BIN/ssh" "$TEST_BIN/open" "$TEST_BIN/fzf" "$TEST_BIN/nvim" \
+    "$TEST_BIN/lazygit" \
     "$PALETTE_BIN/tmux" \
     "$TEST_HOME/.config/nvim/scripts/devpod-nvim" \
     "$TEST_HOME/.config/nvim/scripts/nvim-review-open" \
     "$TEST_HOME/.config/tuicr/tuicr-round"
+}
+
+lazygit_editor_behaviour() {
+  start_plain_server || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" source-file "$ROOT/tmux.conf" >/dev/null 2>&1 || return
+  ref=$(server_ref) || return
+  write_fakes || return
+
+  EDITOR_LOG=$TMP/lazygit-editor.log
+  DEVPOD_LOG=$TMP/lazygit-devpod.log
+  export EDITOR_LOG DEVPOD_LOG
+
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-session -d -s lazygit-route -n git \
+    -c "$ROOT" 'sleep 120' || return
+  git_pane=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t lazygit-route:git '#{pane_id}'
+  ) || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-window -d -t lazygit-route: -n editor \
+    -c "$ROOT" 'sleep 120' || return
+  editor_window=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t lazygit-route:editor '#{window_id}'
+  ) || return
+
+  PATH="$TEST_BIN:$PATH" TMUX=$ref TMUX_PANE=$git_pane \
+    "$ROOT/scripts/lazygit-edit.sh" --line 12 -- "$ROOT/tmux.conf" || return
+  expect_equal "$(sed -n '1p' "$DEVPOD_LOG")" open-location \
+    'standalone LazyGit tries DevPod editor first' || return
+  expect_equal "$(sed -n '1p' "$EDITOR_LOG")" --cwd 'LazyGit host RPC cwd flag' || return
+  expect_equal "$(sed -n '2p' "$EDITOR_LOG")" "$ROOT" 'LazyGit host RPC root' || return
+  expect_equal "$(sed -n '3p' "$EDITOR_LOG")" --file 'LazyGit host RPC file flag' || return
+  expect_equal "$(sed -n '4p' "$EDITOR_LOG")" "$ROOT/tmux.conf" 'LazyGit host RPC file' || return
+  expect_equal "$(sed -n '6p' "$EDITOR_LOG")" 12 'LazyGit host RPC line' || return
+  expect_equal "$(sed -n '8p' "$EDITOR_LOG")" 1 'LazyGit host RPC column' || return
+  expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p -t lazygit-route '#{window_id}')" \
+    "$editor_window" 'successful host RPC focuses editor window' || return
+
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" select-window -t lazygit-route:git || return
+  : > "$EDITOR_LOG"
+  DEVPOD_OPEN_STATUS=0 PATH="$TEST_BIN:$PATH" TMUX=$ref TMUX_PANE=$git_pane \
+    "$ROOT/scripts/lazygit-edit.sh" -- "$ROOT/README.md" || return
+  expect_equal "$(sed -n '1p' "$EDITOR_LOG")" '' 'active DevPod skips LazyGit host RPC' || return
+  expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p -t lazygit-route '#{window_id}')" \
+    "$editor_window" 'successful DevPod RPC focuses editor window' || return
+
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" select-window -t lazygit-route:git || return
+  DEVPOD_OPEN_STATUS=2 PATH="$TEST_BIN:$PATH" TMUX=$ref TMUX_PANE=$git_pane \
+    "$ROOT/scripts/lazygit-edit.sh" -- "$ROOT/README.md" >/dev/null 2>&1 && {
+      printf 'active DevPod bridge failure fell through or succeeded for LazyGit\n'
+      return 1
+    }
+  expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p -t lazygit-route '#{window_name}')" \
+    git 'failed LazyGit RPC keeps focus in git window' || return
+
+  base_pane=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t base '#{pane_id}'
+  ) || return
+  PATH="$TEST_BIN:$PATH" TMUX=$ref TMUX_PANE=$base_pane \
+    "$ROOT/scripts/lazygit-edit.sh" -- "$ROOT/README.md" >/dev/null 2>&1 && {
+      printf 'non-git source window accepted standalone LazyGit routing\n'
+      return 1
+    }
+
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-window -d -t lazygit-route: -n editor \
+    -c "$ROOT" 'sleep 120' || return
+  PATH="$TEST_BIN:$PATH" TMUX=$ref TMUX_PANE=$git_pane \
+    "$ROOT/scripts/lazygit-edit.sh" -- "$ROOT/README.md" >/dev/null 2>&1 && {
+      printf 'ambiguous editor windows accepted standalone LazyGit routing\n'
+      return 1
+    }
+
+  LAZYGIT_CONFIG_DIR=$TMP/lazygit-config
+  LAZYGIT_LOG=$TMP/lazygit.log
+  export LAZYGIT_CONFIG_DIR LAZYGIT_LOG
+  mkdir -p "$LAZYGIT_CONFIG_DIR" || return
+  : > "$LAZYGIT_CONFIG_DIR/config.yml"
+  PATH="$TEST_BIN:$PATH" LG_CONFIG_FILE='' "$ROOT/scripts/lazygit-window.sh" status || return
+  expect_equal "$(sed -n '1p' "$LAZYGIT_LOG")" \
+    "$LAZYGIT_CONFIG_DIR/config.yml,$ROOT/sessions/lazygit.yml" \
+    'standalone LazyGit default config plus overlay' || return
+  expect_equal "$(sed -n '2p' "$LAZYGIT_LOG")" status 'standalone LazyGit argv' || return
+
+  custom_configs=$TMP/one.yml,$TMP/two.yml
+  LG_CONFIG_FILE=$custom_configs PATH="$TEST_BIN:$PATH" \
+    "$ROOT/scripts/lazygit-window.sh" branch || return
+  expect_equal "$(sed -n '1p' "$LAZYGIT_LOG")" \
+    "$custom_configs,$ROOT/sessions/lazygit.yml" \
+    'standalone LazyGit preserves explicit config list' || return
+  expect_equal "$(sed -n '2p' "$LAZYGIT_LOG")" branch 'standalone LazyGit custom argv' || return
+
+  stop_active_server
 }
 
 devpod_editor_behaviour() {
@@ -776,6 +875,8 @@ plugin_and_binding_contract() {
 
   expect_contains "$(binding_for copy-mode-vi C-o)" \
     'open-selection.sh --editor' 'editor selection binding' || return
+  expect_contains "$(binding_for prefix R)" \
+    'lazygit-window.sh' 'dead git pane migrates to standalone LazyGit wrapper' || return
   opener_binding=$(binding_for copy-mode-vi o)
   case "$opener_binding" in
     *'open-selection.sh --system'*|*'other-end'*) ;;
@@ -792,6 +893,7 @@ run_check 'real source-file parse and core invariants' parse_and_invariants
 run_check 'detached smoke on a distinct socket' detached_smoke
 run_check 'exact SSH metadata, validation and rename cleanup' ssh_behaviour
 run_check 'DevPod editor window creation, reuse and guards' devpod_editor_behaviour
+run_check 'standalone LazyGit editor routing and config isolation' lazygit_editor_behaviour
 run_check 'logging, splits, status, opener and roster behaviour' pane_helpers_and_status
 run_check 'mode-aware active pane frame' mode_frame_behaviour
 run_check 'plugin and binding ownership' plugin_and_binding_contract
