@@ -264,6 +264,13 @@ editor” status. An active-but-unreachable or ambiguous bridge fails visibly in
 same path in a second editor. Neither helper ever launches an unregistered Neovim; this does not
 justify a fifth submodule.
 
+In the standalone `git` window, LazyGit's selected-branch `C` action keeps the interactive
+`gh pr create` questions in LazyGit. If `gh` opens an editor for the title or body,
+`scripts/lazygit-pr-editor.sh` waits for the registered host Neovim, focuses the exact `editor`
+window only after Neovim acknowledges the file, then returns to `git` when editing finishes. The
+temporary GitHub text is a host file, so an active DevPod editor is not used as a fallback; with no
+matching host editor the handoff fails closed and leaves the PR uncreated.
+
 Three replaced hand-written code: `fuzzback.sh` and `grab.sh` were reimplementations of
 `tmux-fuzzback` and `extrakto` and are gone. **`tmux-sessionist` was tried and rejected** — its
 `promote_pane` creates _unnamed_ sessions, and it silently stole `prefix + C-Space`, the secondary

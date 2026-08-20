@@ -280,9 +280,26 @@ write_fakes() {
   # shellcheck disable=SC2016
   printf '%s\n' '#!/bin/sh' 'printf "%s\\n" "$1" > "$OPEN_LOG"' > "$TEST_BIN/open"
   mkdir -p "$TEST_HOME/.config/nvim/scripts" "$TEST_HOME/.config/tuicr" || return
+  # The blocking-editor mode reports readiness, observes the selected window,
+  # then returns a caller-controlled status. Ordinary editor RPC still only
+  # records argv and exits successfully.
   # shellcheck disable=SC2016
-  printf '%s\n' '#!/bin/sh' 'printf "%s\\n" "$@" > "$EDITOR_LOG"' \
-    > "$TEST_HOME/.config/nvim/scripts/nvim-review-open"
+  printf '%s\n' '#!/bin/sh' \
+    'printf "%s\\n" "$@" > "$EDITOR_LOG"' \
+    'if [ "${1:-}" = --wait-editor ]; then' \
+    '  [ "${PR_EDITOR_NO_READY:-}" != 1 ] || exit "${PR_EDITOR_STATUS:-1}"' \
+    '  if [ "${PR_EDITOR_HANG_READY:-}" = 1 ]; then while :; do sleep 1; done; fi' \
+    '  if [ "${PR_EDITOR_INVALID_READY:-}" = 1 ]; then printf "READY\\nextra\\n"; sleep 1; exit 0; fi' \
+    '  printf "READY\\n"' \
+    '  sleep 0.15' \
+    '  if [ -n "${PR_EDITOR_FOCUS_LOG:-}" ]; then' \
+    '    session=$(tmux display-message -p -t "$TMUX_PANE" "#{session_id}")' \
+    '    tmux display-message -p -t "$session" "#{window_name}" > "$PR_EDITOR_FOCUS_LOG"' \
+    '  fi' \
+    '  sleep 0.05' \
+    '  exit "${PR_EDITOR_STATUS:-0}"' \
+    'fi' \
+    'exit 0' > "$TEST_HOME/.config/nvim/scripts/nvim-review-open"
   # Exit 3 is the public no-active-DevPod contract; tests override it to
   # prove active success and active bridge failures do not reach host RPC.
   # shellcheck disable=SC2016
@@ -298,6 +315,7 @@ write_fakes() {
   printf '%s\n' '#!/bin/sh' \
     'if [ "${1:-}" = --print-config-dir ]; then printf "%s\n" "$LAZYGIT_CONFIG_DIR"; exit 0; fi' \
     'printf "%s\n" "${LG_CONFIG_FILE:-}" > "$LAZYGIT_LOG"' \
+    'printf "%s\n" "${GH_EDITOR:-}" > "${LAZYGIT_EDITOR_LOG:-/dev/null}"' \
     'printf "%s\n" "$@" >> "$LAZYGIT_LOG"' \
     > "$TEST_BIN/lazygit"
   # shellcheck disable=SC2016
@@ -406,7 +424,8 @@ lazygit_editor_behaviour() {
 
   EDITOR_LOG=$TMP/lazygit-editor.log
   DEVPOD_LOG=$TMP/lazygit-devpod.log
-  export EDITOR_LOG DEVPOD_LOG
+  PR_EDITOR_FOCUS_LOG=$TMP/lazygit-pr-editor-focus.log
+  export EDITOR_LOG DEVPOD_LOG PR_EDITOR_FOCUS_LOG
 
   "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-session -d -s lazygit-route -n git \
     -c "$ROOT" 'sleep 120' || return
@@ -449,6 +468,66 @@ lazygit_editor_behaviour() {
   expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p -t lazygit-route '#{window_name}')" \
     git 'failed LazyGit RPC keeps focus in git window' || return
 
+  pr_dir=$(cd "$TMP" && pwd -P) || return
+  pr_file="$pr_dir/gh body ; [literal].md"
+  printf '%s\n' 'Pull request body' > "$pr_file" || return
+  : > "$EDITOR_LOG"
+  : > "$PR_EDITOR_FOCUS_LOG"
+  PATH="$TEST_BIN:$PATH" TMUX=$ref TMUX_PANE=$git_pane \
+    "$ROOT/scripts/lazygit-pr-editor.sh" "$pr_file" || return
+  expect_equal "$(sed -n '1p' "$EDITOR_LOG")" --wait-editor \
+    'PR text uses blocking Neovim editor mode' || return
+  expect_equal "$(sed -n '2p' "$EDITOR_LOG")" --signal-ready \
+    'PR text requests a readiness signal' || return
+  expect_equal "$(sed -n '3p' "$EDITOR_LOG")" --tmux-pane \
+    'PR text binds the registered editor to one tmux pane' || return
+  expect_equal "$(sed -n '4p' "$EDITOR_LOG")" "$($TMUX_REAL -L "$ACTIVE_SOCKET" list-panes -t "$editor_window" -F '#{pane_id}')" \
+    'PR text uses the exact editor pane id' || return
+  expect_equal "$(sed -n '5p' "$EDITOR_LOG")" "$pr_file" \
+    'PR text path remains one exact argument' || return
+  expect_equal "$(sed -n '1p' "$PR_EDITOR_FOCUS_LOG")" editor \
+    'ready PR editor focuses the editor window while blocked' || return
+  expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p -t lazygit-route '#{window_name}')" \
+    git 'completed PR editor returns focus to git window' || return
+
+  : > "$PR_EDITOR_FOCUS_LOG"
+  PR_EDITOR_STATUS=19 PATH="$TEST_BIN:$PATH" TMUX=$ref TMUX_PANE=$git_pane \
+    "$ROOT/scripts/lazygit-pr-editor.sh" "$pr_file" >/dev/null 2>&1 && {
+      printf 'failed PR editor returned success\n'
+      return 1
+    }
+  expect_equal "$(sed -n '1p' "$PR_EDITOR_FOCUS_LOG")" editor \
+    'failing PR editor was focused only after readiness' || return
+  expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p -t lazygit-route '#{window_name}')" \
+    git 'failed PR editor returns focus to git window' || return
+
+  : > "$PR_EDITOR_FOCUS_LOG"
+  PR_EDITOR_NO_READY=1 PR_EDITOR_STATUS=23 PATH="$TEST_BIN:$PATH" TMUX=$ref TMUX_PANE=$git_pane \
+    "$ROOT/scripts/lazygit-pr-editor.sh" "$pr_file" >/dev/null 2>&1 && {
+      printf 'PR editor failure before readiness returned success\n'
+      return 1
+    }
+  expect_equal "$(sed -n '1p' "$PR_EDITOR_FOCUS_LOG")" '' \
+    'PR editor failure before readiness never focuses editor' || return
+  expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p -t lazygit-route '#{window_name}')" \
+    git 'PR editor failure before readiness keeps focus in git window' || return
+
+  PR_EDITOR_INVALID_READY=1 PATH="$TEST_BIN:$PATH" TMUX=$ref TMUX_PANE=$git_pane \
+    "$ROOT/scripts/lazygit-pr-editor.sh" "$pr_file" >/dev/null 2>&1 && {
+      printf 'PR editor accepted a non-exact readiness signal\n'
+      return 1
+    }
+  expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p -t lazygit-route '#{window_name}')" \
+    git 'invalid PR editor readiness keeps focus in git window' || return
+
+  PR_EDITOR_HANG_READY=1 PATH="$TEST_BIN:$PATH" TMUX=$ref TMUX_PANE=$git_pane \
+    "$ROOT/scripts/lazygit-pr-editor.sh" "$pr_file" >/dev/null 2>&1 && {
+      printf 'PR editor readiness wait had no timeout\n'
+      return 1
+    }
+  expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p -t lazygit-route '#{window_name}')" \
+    git 'timed-out PR editor readiness keeps focus in git window' || return
+
   base_pane=$(
     "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t base '#{pane_id}'
   ) || return
@@ -468,7 +547,8 @@ lazygit_editor_behaviour() {
 
   LAZYGIT_CONFIG_DIR=$TMP/lazygit-config
   LAZYGIT_LOG=$TMP/lazygit.log
-  export LAZYGIT_CONFIG_DIR LAZYGIT_LOG
+  LAZYGIT_EDITOR_LOG=$TMP/lazygit-gh-editor.log
+  export LAZYGIT_CONFIG_DIR LAZYGIT_LOG LAZYGIT_EDITOR_LOG
   mkdir -p "$LAZYGIT_CONFIG_DIR" || return
   : > "$LAZYGIT_CONFIG_DIR/config.yml"
   PATH="$TEST_BIN:$PATH" LG_CONFIG_FILE='' "$ROOT/scripts/lazygit-window.sh" status || return
@@ -476,6 +556,8 @@ lazygit_editor_behaviour() {
     "$LAZYGIT_CONFIG_DIR/config.yml,$ROOT/sessions/lazygit.yml" \
     'standalone LazyGit default config plus overlay' || return
   expect_equal "$(sed -n '2p' "$LAZYGIT_LOG")" status 'standalone LazyGit argv' || return
+  expect_equal "$(sed -n '1p' "$LAZYGIT_EDITOR_LOG")" "$ROOT/scripts/lazygit-pr-editor.sh" \
+    'standalone LazyGit gets process-local PR editor' || return
 
   custom_configs=$TMP/one.yml,$TMP/two.yml
   LG_CONFIG_FILE=$custom_configs PATH="$TEST_BIN:$PATH" \

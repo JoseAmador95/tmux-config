@@ -8,6 +8,7 @@ set -u
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd -P) || exit 1
 overlay=$ROOT/sessions/lazygit.yml
+pr_editor=$ROOT/scripts/lazygit-pr-editor.sh
 
 [ -r "$overlay" ] || {
   printf 'lazygit window: overlay is not readable: %s\n' "$overlay" >&2
@@ -15,6 +16,10 @@ overlay=$ROOT/sessions/lazygit.yml
 }
 command -v lazygit >/dev/null 2>&1 || {
   printf 'lazygit window: lazygit is not in PATH\n' >&2
+  exit 1
+}
+[ -x "$pr_editor" ] || {
+  printf 'lazygit window: PR editor helper is not executable: %s\n' "$pr_editor" >&2
   exit 1
 }
 
@@ -40,4 +45,4 @@ case ",$config_files," in
   *) config_files=${config_files:+$config_files,}$overlay ;;
 esac
 
-exec env LG_CONFIG_FILE="$config_files" lazygit "$@"
+exec env LG_CONFIG_FILE="$config_files" GH_EDITOR="$pr_editor" lazygit "$@"
