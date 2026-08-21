@@ -224,6 +224,24 @@ Each entry selects the one exact named window in the current `dev` session. It d
 missing window, respawn a dead application or cross into another session; missing, duplicate and
 non-`dev` targets fail visibly.
 
+Neovim can request an in-place refresh of its current `tp`/`@layout=dev` session through
+`scripts/dev-session-refresh.sh`. The helper first proves that the caller is the sole pane in the
+session's one `editor` window and that `agent`, `editor`, `git` and `term` are each present exactly
+once as single-pane windows. It then hands coordination to tmux itself, waits up to five seconds for
+Neovim to exit, reloads the canonical `~/.config/tmux/tmux.conf` (including global work/local
+layers), and respawns `agent`, standalone LazyGit, then the editor in their existing panes. Host
+Neovim receives `NVIM_TMUX_REFRESH_RESTORE=1`; a pane marked `@devpod_active=1` returns through
+`devpod-nvim up --restore-session` instead.
+
+The refresh preserves the four window/pane IDs, the dev session root, tool-window
+`remain-on-exit`/`@no_split` policy, and the editor's host-or-DevPod mode. It never selects, kills or
+respawns `term`, and it never restarts a process in another session. The config reload is global by
+design, so option/binding changes still become visible server-wide. Extra application state is not
+serialized: restoration is the editor's one-shot session restore plus each canonical launcher. A
+missing/duplicate/multipane tool window, changed topology, unusable session path, reload failure or
+editor timeout aborts visibly. Once the editor has exited, later failures make a best-effort editor
+respawn so the session is not left stranded.
+
 `prefix + f` replaces `find-window` only while tmux-fingers is usable; otherwise the default is
 restored. `Alt-f` is deliberately not a tmux root binding, so shells keep their native forward-word
 navigation; the separate copy-mode table remains untouched. Copy-mode `o` similarly replaces

@@ -305,10 +305,22 @@ write_fakes() {
   # shellcheck disable=SC2016
   printf '%s\n' '#!/bin/sh' \
     'printf "%s\\n" "$@" > "${DEVPOD_LOG:-$HOME/devpod.log}"' \
+    'if [ "${1:-}" = up ] && [ -n "${TMUX_REFRESH_EVENT_LOG:-}" ]; then' \
+    '  printf "editor-devpod|%s\\n" "$*" >> "$TMUX_REFRESH_EVENT_LOG"' \
+    'fi' \
     '[ "${1:-}" = up ] && exec sleep 120' \
     'exit "${DEVPOD_OPEN_STATUS:-3}"' \
     > "$TEST_HOME/.config/nvim/scripts/devpod-nvim"
-  printf '%s\n' '#!/bin/sh' 'exec sleep 120' > "$TEST_BIN/nvim"
+  # shellcheck disable=SC2016
+  printf '%s\n' '#!/bin/sh' \
+    'if [ -n "${TMUX_REFRESH_EVENT_LOG:-}" ]; then' \
+    '  printf "editor-host|restore=%s|%s\\n" "${NVIM_TMUX_REFRESH_RESTORE:-}" "$*" >> "$TMUX_REFRESH_EVENT_LOG"' \
+    'fi' \
+    'exec sleep 120' > "$TEST_BIN/nvim"
+  # shellcheck disable=SC2016
+  printf '%s\n' '#!/bin/sh' \
+    'printf "agent\\n" >> "$TMUX_REFRESH_EVENT_LOG"' \
+    'exec sleep 120' > "$TEST_BIN/refresh-agent"
   # The standalone LazyGit wrapper first asks for the normal user config, then
   # execs the same binary with a process-local LG_CONFIG_FILE list.
   # shellcheck disable=SC2016
@@ -317,6 +329,10 @@ write_fakes() {
     'printf "%s\n" "${LG_CONFIG_FILE:-}" > "$LAZYGIT_LOG"' \
     'printf "%s\n" "${GH_EDITOR:-}" > "${LAZYGIT_EDITOR_LOG:-/dev/null}"' \
     'printf "%s\n" "$@" >> "$LAZYGIT_LOG"' \
+    'if [ -n "${TMUX_REFRESH_EVENT_LOG:-}" ]; then' \
+    '  printf "git\\n" >> "$TMUX_REFRESH_EVENT_LOG"' \
+    '  exec sleep 120' \
+    'fi' \
     > "$TEST_BIN/lazygit"
   # shellcheck disable=SC2016
   printf '%s\n' '#!/bin/sh' 'printf "%s\\n" "$@" > "$REVIEW_LOG"' \
@@ -352,6 +368,7 @@ write_fakes() {
     'esac' \
     'exit 4' > "$PALETTE_BIN/tmux"
   chmod +x "$TEST_BIN/ssh" "$TEST_BIN/open" "$TEST_BIN/fzf" "$TEST_BIN/nvim" \
+    "$TEST_BIN/refresh-agent" \
     "$TEST_BIN/lazygit" \
     "$PALETTE_BIN/tmux" \
     "$TEST_HOME/.config/nvim/scripts/devpod-nvim" \
@@ -412,6 +429,317 @@ dev_window_palette_behaviour() {
       printf 'unknown dev window name was accepted\n'
       return 1
     }
+
+  stop_active_server
+}
+
+dev_refresh_behaviour() {
+  start_plain_server || return
+  ref=$(server_ref) || return
+  write_fakes || return
+
+  refresh_helper=$ROOT/scripts/dev-session-refresh.sh
+  refresh_work_dir=$TEST_HOME/.config/tmux-work
+  refresh_lazygit_dir=$TMP/refresh-lazygit-config
+  refresh_lazygit_log=$TMP/refresh-lazygit.log
+  refresh_lazygit_editor_log=$TMP/refresh-lazygit-editor.log
+  refresh_devpod_log=$TMP/refresh-devpod.log
+  refresh_bin=$TMP/refresh-bin
+  refresh_command_log=$TMP/refresh-commands.log
+  mkdir -p "$refresh_work_dir" "$refresh_lazygit_dir" "$refresh_bin" || return
+  : > "$refresh_lazygit_dir/config.yml"
+  : > "$refresh_lazygit_log"
+  : > "$refresh_lazygit_editor_log"
+  : > "$refresh_devpod_log"
+  : > "$refresh_command_log"
+  # Log only the argv boundary, then forward to the exact real tmux binary.
+  # This makes respawn order observable without adding refresh state to tmux.
+  # shellcheck disable=SC2016
+  printf '%s\n' '#!/bin/sh' \
+    'if [ "${1:-}" = respawn-pane ]; then' \
+    '  for argument in "$@"; do printf "<%s>" "$argument"; done >> "$TMUX_REFRESH_COMMAND_LOG"' \
+    '  printf "\\n" >> "$TMUX_REFRESH_COMMAND_LOG"' \
+    'fi' \
+    'exec "$TMUX_REFRESH_REAL_TMUX" "$@"' > "$refresh_bin/tmux"
+  chmod +x "$refresh_bin/tmux" || return
+
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-environment -g PATH \
+    "$refresh_bin:$TEST_BIN:$PATH" || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-environment -g TMUX_REFRESH_REAL_TMUX "$TMUX_REAL" || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-environment -g TMUX_REFRESH_COMMAND_LOG \
+    "$refresh_command_log" || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-environment -g TMUX_AGENT "$TEST_BIN/refresh-agent" || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-environment -g LAZYGIT_CONFIG_DIR "$refresh_lazygit_dir" || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-environment -g LAZYGIT_LOG "$refresh_lazygit_log" || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-environment -g LAZYGIT_EDITOR_LOG \
+    "$refresh_lazygit_editor_log" || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-environment -g DEVPOD_LOG "$refresh_devpod_log" || return
+
+  create_refresh_fixture() {
+    fixture_session=$1
+    fixture_mode=$2
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-session -d -s "$fixture_session" -n agent \
+      -c "$ROOT" 'sleep 120' || return
+    for fixture_window in editor git term; do
+      "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-window -d -t "$fixture_session:" \
+        -n "$fixture_window" -c "$ROOT" 'sleep 120' || return
+    done
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-option -t "$fixture_session" @layout dev || return
+    for fixture_window in agent editor git; do
+      "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-option -w -t "$fixture_session:$fixture_window" \
+        remain-on-exit on || return
+      "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-option -w -t "$fixture_session:$fixture_window" \
+        @no_split 1 || return
+    done
+    fixture_editor=$(
+      "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$fixture_session:editor" '#{pane_id}'
+    ) || return
+    if [ "$fixture_mode" = devpod ]; then
+      "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-option -p -t "$fixture_editor" @devpod_active 1 || return
+    fi
+    printf '%s\n' "$fixture_editor"
+  }
+
+  wait_for_event_count() {
+    event_file=$1
+    wanted_count=$2
+    event_attempts=0
+    while [ "$(awk 'END { print NR + 0 }' "$event_file" 2>/dev/null || printf 0)" -lt "$wanted_count" ] &&
+      [ "$event_attempts" -lt 500 ]; do
+      sleep 0.02
+      event_attempts=$((event_attempts + 1))
+    done
+    event_count=$(awk 'END { print NR + 0 }' "$event_file" 2>/dev/null || printf 0)
+    [ "$event_count" -ge "$wanted_count" ] || {
+      printf 'refresh event log reached %s line(s), expected %s\n' "$event_count" "$wanted_count"
+      printf 'recorded refresh events:\n'
+      sed 's/^/  /' "$event_file"
+      printf 'recorded respawn commands:\n'
+      sed 's/^/  /' "$refresh_command_log"
+      printf 'editor state: '
+      "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$refresh_source" \
+        '#{session_id}|#{window_id}|#{pane_id}|#{pane_dead}|#{pane_pid}|#{pane_current_command}' \
+        2>&1 || true
+      printf 'tmux messages:\n'
+      "$TMUX_REAL" -L "$ACTIVE_SOCKET" show-messages -JT 2>&1 | tail -n 12 | sed 's/^/  /'
+      for debug_window in agent editor git; do
+        printf '%s pane output:\n' "$debug_window"
+        "$TMUX_REAL" -L "$ACTIVE_SOCKET" capture-pane -p -S -20 \
+          -t "$refresh_session:$debug_window" 2>&1 | sed 's/^/  /'
+      done
+      return 1
+    }
+  }
+
+  exercise_refresh() {
+    refresh_session=$1
+    refresh_mode=$2
+    expected_editor_event=$3
+    refresh_event_log=$TMP/$refresh_session-events.log
+    : > "$refresh_event_log"
+    : > "$refresh_command_log"
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-environment -g TMUX_REFRESH_EVENT_LOG \
+      "$refresh_event_log" || return
+    printf 'set-option -g @refresh_test_work_loaded %s\n' "$refresh_mode" \
+      > "$refresh_work_dir/work.conf" || return
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-option -gu @refresh_test_work_loaded 2>/dev/null || true
+
+    refresh_source=$(create_refresh_fixture "$refresh_session" "$refresh_mode") || return
+
+    before_ids=$(
+      "$TMUX_REAL" -L "$ACTIVE_SOCKET" list-windows -t "$refresh_session" \
+        -F '#{window_name}|#{window_id}|#{pane_id}' | sort
+    ) || return
+    before_agent_pid=$(
+      "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$refresh_session:agent" '#{pane_pid}'
+    ) || return
+    before_editor_pid=$(
+      "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$refresh_session:editor" '#{pane_pid}'
+    ) || return
+    before_git_pid=$(
+      "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$refresh_session:git" '#{pane_pid}'
+    ) || return
+    before_term_pane=$(
+      "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$refresh_session:term" '#{pane_id}'
+    ) || return
+    before_term_pid=$(
+      "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$before_term_pane" '#{pane_pid}'
+    ) || return
+    before_term_cwd=$(
+      "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$before_term_pane" '#{pane_current_path}'
+    ) || return
+
+    TMUX=$ref "$refresh_helper" check "$refresh_source" >/dev/null 2>&1 || return
+    expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" list-windows -t "$refresh_session" \
+      -F '#{window_name}|#{window_id}|#{pane_id}' | sort)" "$before_ids" \
+      "$refresh_session check is topology-read-only" || return
+    for check_window in agent editor git term; do
+      case "$check_window" in
+        agent) check_pid=$before_agent_pid ;;
+        editor) check_pid=$before_editor_pid ;;
+        git) check_pid=$before_git_pid ;;
+        term) check_pid=$before_term_pid ;;
+      esac
+      expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p \
+        -t "$refresh_session:$check_window" '#{pane_pid}')" "$check_pid" \
+        "$refresh_session check leaves $check_window process unchanged" || return
+    done
+
+    TMUX=$ref "$refresh_helper" schedule "$refresh_source" >/dev/null 2>&1 || return
+    sleep 0.2
+    expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p \
+      -t "$refresh_session:agent" '#{pane_pid}')" "$before_agent_pid" \
+      "$refresh_session agent remains live while refresh waits" || return
+    expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p \
+      -t "$refresh_session:git" '#{pane_pid}')" "$before_git_pid" \
+      "$refresh_session git remains live while refresh waits" || return
+    expect_equal "$(sed -n '1p' "$refresh_event_log")" '' \
+      "$refresh_session performs no respawn before editor exit" || return
+
+    kill -TERM "$before_editor_pid" || return
+    wait_for_event_count "$refresh_event_log" 3 || return
+    expect_equal "$(grep -Fxc agent "$refresh_event_log")" 1 \
+      "$refresh_session starts agent once" || return
+    expect_equal "$(grep -Fxc git "$refresh_event_log")" 1 \
+      "$refresh_session starts git once" || return
+    expect_equal "$(grep -Fxc "$expected_editor_event" "$refresh_event_log")" 1 \
+      "$refresh_session starts the expected editor once" || return
+
+    refresh_agent_pane=$(
+      "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$refresh_session:agent" '#{pane_id}'
+    ) || return
+    refresh_git_pane=$(
+      "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$refresh_session:git" '#{pane_id}'
+    ) || return
+    expect_contains "$(sed -n '1p' "$refresh_command_log")" \
+      "<respawn-pane><-k><-t><$refresh_agent_pane>" \
+      "$refresh_session respawns agent first" || return
+    expect_contains "$(sed -n '2p' "$refresh_command_log")" \
+      "<respawn-pane><-k><-t><$refresh_git_pane>" \
+      "$refresh_session respawns git second" || return
+    expect_contains "$(sed -n '3p' "$refresh_command_log")" \
+      "<respawn-pane><-k><-t><$refresh_source>" \
+      "$refresh_session respawns editor last" || return
+
+    after_ids=$(
+      "$TMUX_REAL" -L "$ACTIVE_SOCKET" list-windows -t "$refresh_session" \
+        -F '#{window_name}|#{window_id}|#{pane_id}' | sort
+    ) || return
+    expect_equal "$after_ids" "$before_ids" "$refresh_session exact tmux ids" || return
+    after_agent_pid=$(
+      "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$refresh_session:agent" '#{pane_pid}'
+    ) || return
+    after_editor_pid=$(
+      "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$refresh_session:editor" '#{pane_pid}'
+    ) || return
+    after_git_pid=$(
+      "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$refresh_session:git" '#{pane_pid}'
+    ) || return
+    [ "$after_agent_pid" != "$before_agent_pid" ] || { printf 'agent PID did not change\n'; return 1; }
+    [ "$after_editor_pid" != "$before_editor_pid" ] || { printf 'editor PID did not change\n'; return 1; }
+    [ "$after_git_pid" != "$before_git_pid" ] || { printf 'git PID did not change\n'; return 1; }
+
+    expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p \
+      -t "$before_term_pane" '#{pane_id}')" "$before_term_pane" \
+      "$refresh_session term pane id" || return
+    expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p \
+      -t "$before_term_pane" '#{pane_pid}')" "$before_term_pid" \
+      "$refresh_session term PID" || return
+    expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p \
+      -t "$before_term_pane" '#{pane_current_path}')" "$before_term_cwd" \
+      "$refresh_session term cwd" || return
+    for refresh_window in agent editor git; do
+      expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" show-option -wqv \
+        -t "$refresh_session:$refresh_window" remain-on-exit)" on \
+        "$refresh_session $refresh_window remain-on-exit" || return
+      expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" show-option -wqv \
+        -t "$refresh_session:$refresh_window" @no_split)" 1 \
+        "$refresh_session $refresh_window split lock" || return
+      expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p \
+        -t "$refresh_session:$refresh_window" '#{pane_current_path}')" "$ROOT" \
+        "$refresh_session $refresh_window cwd" || return
+    done
+    expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" show-option -gqv @refresh_test_work_loaded)" \
+      "$refresh_mode" "$refresh_session disposable work config reload" || return
+  }
+
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-session -d -s refresh-guard -c "$ROOT" 'sleep 120' || return
+  guard_pane=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t refresh-guard '#{pane_id}'
+  ) || return
+  guard_pid=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$guard_pane" '#{pane_pid}'
+  ) || return
+
+  exercise_refresh refresh-host host 'editor-host|restore=1|' || return
+  expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p -t "$guard_pane" '#{pane_pid}')" \
+    "$guard_pid" 'host refresh leaves second session process unchanged' || return
+  exercise_refresh refresh-devpod devpod 'editor-devpod|up --restore-session' || return
+  expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p -t "$guard_pane" '#{pane_pid}')" \
+    "$guard_pid" 'DevPod refresh leaves second session process unchanged' || return
+
+  TMUX=$ref "$refresh_helper" check 'editor' >/dev/null 2>&1 && {
+    printf 'refresh accepted a non-tmux pane token\n'; return 1;
+  }
+  TMUX=$ref "$refresh_helper" check '%999999' >/dev/null 2>&1 && {
+    printf 'refresh accepted a missing pane id\n'; return 1;
+  }
+
+  invalid_source=$(create_refresh_fixture refresh-invalid-layout host) || return
+  invalid_agent_pid=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t refresh-invalid-layout:agent '#{pane_pid}'
+  ) || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-option -t refresh-invalid-layout @layout shell || return
+  TMUX=$ref "$refresh_helper" check "$invalid_source" >/dev/null 2>&1 && {
+    printf 'refresh accepted a non-dev layout\n'; return 1;
+  }
+  expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p \
+    -t refresh-invalid-layout:agent '#{pane_pid}')" "$invalid_agent_pid" \
+    'invalid layout performs no tool respawn' || return
+
+  missing_source=$(create_refresh_fixture refresh-missing host) || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" kill-window -t refresh-missing:term || return
+  TMUX=$ref "$refresh_helper" check "$missing_source" >/dev/null 2>&1 && {
+    printf 'refresh accepted a missing term window\n'; return 1;
+  }
+
+  duplicate_source=$(create_refresh_fixture refresh-duplicate host) || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-window -d -t refresh-duplicate: -n git \
+    -c "$ROOT" 'sleep 120' || return
+  TMUX=$ref "$refresh_helper" check "$duplicate_source" >/dev/null 2>&1 && {
+    printf 'refresh accepted duplicate git windows\n'; return 1;
+  }
+
+  multipane_source=$(create_refresh_fixture refresh-multipane host) || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" split-window -d -t refresh-multipane:agent \
+    -c "$ROOT" 'sleep 120' || return
+  TMUX=$ref "$refresh_helper" check "$multipane_source" >/dev/null 2>&1 && {
+    printf 'refresh accepted a multipane tool window\n'; return 1;
+  }
+
+  non_editor_source=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t refresh-multipane:term '#{pane_id}'
+  ) || return
+  TMUX=$ref "$refresh_helper" check "$non_editor_source" >/dev/null 2>&1 && {
+    printf 'refresh accepted a non-editor source pane\n'; return 1;
+  }
+
+  timeout_source=$(create_refresh_fixture refresh-timeout host) || return
+  timeout_agent_pid=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t refresh-timeout:agent '#{pane_pid}'
+  ) || return
+  timeout_git_pid=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t refresh-timeout:git '#{pane_pid}'
+  ) || return
+  TMUX=$ref "$refresh_helper" run "$timeout_source" >/dev/null 2>&1 && {
+    printf 'refresh did not time out while the editor remained alive\n'; return 1;
+  }
+  expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p \
+    -t refresh-timeout:agent '#{pane_pid}')" "$timeout_agent_pid" \
+    'timeout performs no agent respawn' || return
+  expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p \
+    -t refresh-timeout:git '#{pane_pid}')" "$timeout_git_pid" \
+    'timeout performs no git respawn' || return
 
   stop_active_server
 }
@@ -1034,6 +1362,7 @@ run_check 'detached smoke on a distinct socket' detached_smoke
 run_check 'exact SSH metadata, validation and rename cleanup' ssh_behaviour
 run_check 'DevPod editor window creation, reuse and guards' devpod_editor_behaviour
 run_check 'dev layout palette window selection' dev_window_palette_behaviour
+run_check 'dev session refresh lifecycle and failure guards' dev_refresh_behaviour
 run_check 'standalone LazyGit editor routing and config isolation' lazygit_editor_behaviour
 run_check 'logging, splits, status, opener and roster behaviour' pane_helpers_and_status
 run_check 'mode-aware active pane frame' mode_frame_behaviour
