@@ -133,7 +133,7 @@ preflight() {
     /*) ;;
     *) fail 'dev session path is not absolute'; return 1 ;;
   esac
-  [ -d "$refresh_root" ] && [ -x "$refresh_root" ] || {
+  { [ -d "$refresh_root" ] && [ -x "$refresh_root" ]; } || {
     fail "dev session path is unusable: $refresh_root"
     return 1
   }
@@ -151,8 +151,8 @@ preflight() {
   refresh_term_window=${pair% *}
   refresh_term_pane=${pair#* }
 
-  [ "$source_pane" = "$refresh_editor_pane" ] &&
-    [ "$refresh_source_window" = "$refresh_editor_window" ] || {
+  { [ "$source_pane" = "$refresh_editor_pane" ] &&
+    [ "$refresh_source_window" = "$refresh_editor_window" ]; } || {
       fail 'source pane is not the unique single-pane editor window'
       return 1
     }
@@ -197,7 +197,7 @@ capture_expected() {
 
 same_topology() {
   preflight "$source_pane" || return 1
-  [ "$refresh_session_id" = "$expected_session_id" ] &&
+  { [ "$refresh_session_id" = "$expected_session_id" ] &&
     [ "$refresh_root" = "$expected_root" ] &&
     [ "$refresh_agent_window" = "$expected_agent_window" ] &&
     [ "$refresh_agent_pane" = "$expected_agent_pane" ] &&
@@ -207,7 +207,7 @@ same_topology() {
     [ "$refresh_git_pane" = "$expected_git_pane" ] &&
     [ "$refresh_term_window" = "$expected_term_window" ] &&
     [ "$refresh_term_pane" = "$expected_term_pane" ] &&
-    [ "$refresh_editor_mode" = "$expected_editor_mode" ] || {
+    [ "$refresh_editor_mode" = "$expected_editor_mode" ]; } || {
       fail 'dev session topology or editor mode changed during refresh'
       return 1
     }

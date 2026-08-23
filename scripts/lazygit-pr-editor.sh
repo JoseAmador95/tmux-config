@@ -12,7 +12,7 @@ scratch=''
 ready_attempts=0
 ready_attempt_limit=100
 # Invoked through the signal/exit traps below.
-# shellcheck disable=SC2329
+# shellcheck disable=SC2317,SC2329
 cleanup() {
   if [ -n "$child" ]; then
     kill "$child" 2>/dev/null || true
@@ -66,7 +66,7 @@ case "$file" in
   /*) target=$file ;;
   *) target=$repo/$file ;;
 esac
-[ -f "$target" ] && [ ! -L "$target" ] || {
+{ [ -f "$target" ] && [ ! -L "$target" ]; } || {
   say "PR text is not a regular non-symlink file: $file"
   exit 1
 }
@@ -118,7 +118,7 @@ while :; do
         ;;
     esac
     if [ "$ready_size" -ge 6 ]; then
-      [ "$ready_size" -eq 6 ] && IFS= read -r ready_line < "$ready" && [ "$ready_line" = READY ] || {
+      { [ "$ready_size" -eq 6 ] && IFS= read -r ready_line < "$ready" && [ "$ready_line" = READY ]; } || {
         say 'registered editor returned an invalid readiness signal'
         exit 1
       }

@@ -52,7 +52,7 @@ case "$editor_count" in
     editor_window=$(printf '%s\n' "$editor_windows" | sed -n '1p')
     editor_panes=$(tmux list-panes -t "$editor_window" -F '#{pane_id}') || exit 1
     editor_pane=$(printf '%s\n' "$editor_panes" | sed -n '1p')
-    [ -n "$editor_pane" ] && [ "$(printf '%s\n' "$editor_panes" | awk 'NF { count++ } END { print count + 0 }')" -eq 1 ] || {
+    { [ -n "$editor_pane" ] && [ "$(printf '%s\n' "$editor_panes" | awk 'NF { count++ } END { print count + 0 }')" -eq 1 ]; } || {
       say 'editor window must contain exactly one pane'
       exit 1
     }
