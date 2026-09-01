@@ -165,6 +165,22 @@ parse_and_invariants() {
     printf '%s\n' "$parse_out"
     return 1
   }
+  parse_out=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" source-file "$ROOT/tmux.conf" 2>&1) || {
+    printf '%s\n' "$parse_out"
+    return 1
+  }
+  default_terminal=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" show-options -gv default-terminal) || return
+  expect_equal "$default_terminal" 'tmux-256color' 'default-terminal' || return
+  terminal_features=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" show-options -sv terminal-features) || return
+  terminal_feature_count=$(printf '%s\n' "$terminal_features" | tr ',' '\n' | awk '
+    $0 == "xterm-ghostty:RGB:sync" { count++ }
+    END { print count + 0 }
+  ')
+  [ "$terminal_feature_count" -eq 1 ] || {
+    printf 'terminal-features must contain exactly one xterm-ghostty:RGB:sync entry; got %s\n' \
+      "$terminal_feature_count"
+    return 1
+  }
   grep -F "'!~/.config/tmux/scripts/tuicr-review.sh'" "$ROOT/scripts/palette.sh" >/dev/null || {
     printf 'stable tuicr review palette entry is absent\n'
     return 1

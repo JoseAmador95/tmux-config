@@ -106,6 +106,12 @@ source_out=$(isolated_tmux -S "$CFG" source-file \
   printf '%s\n' "$source_out" | sed 's/^/  /'
   exit 1
 }
+source_out=$(isolated_tmux -S "$CFG" source-file \
+  "$CHECK_HOME/.config/tmux/tmux.conf" 2>&1) || {
+  echo "check-docs: tmux.conf failed to parse on reload:"
+  printf '%s\n' "$source_out" | sed 's/^/  /'
+  exit 1
+}
 
 baseline_shell=$(isolated_tmux -S "$VAN" show-options -gv default-shell) || exit 1
 configured_shell=$(isolated_tmux -S "$CFG" show-options -gv default-shell) || exit 1
@@ -120,6 +126,29 @@ if [ "$configured_shell" != "$baseline_shell" ]; then
     "$baseline_shell" "$configured_shell"
   fail=1
 fi
+
+configured_terminal=$(isolated_tmux -S "$CFG" show-options -gv default-terminal) || exit 1
+if [ "$configured_terminal" != 'tmux-256color' ]; then
+  printf '  shared config changed default-terminal: expected tmux-256color, got %s\n' \
+    "$configured_terminal"
+  fail=1
+fi
+terminal_features=$(isolated_tmux -S "$CFG" show-options -sv terminal-features) || exit 1
+terminal_feature_count=$(printf '%s\n' "$terminal_features" | tr ',' '\n' | awk '
+  $0 == "xterm-ghostty:RGB:sync" { count++ }
+  END { print count + 0 }
+')
+if [ "$terminal_feature_count" -ne 1 ]; then
+  printf '  configured terminal-features must contain one xterm-ghostty:RGB:sync entry; got %s\n' \
+    "$terminal_feature_count"
+  fail=1
+fi
+for terminal_contract in 'xterm-ghostty:RGB:sync' 'tmux-256color' 'Do not export a fixed'; do
+  if ! grep -F -q "$terminal_contract" README.md; then
+    printf '  README.md omits terminal contract: %s\n' "$terminal_contract"
+    fail=1
+  fi
+done
 
 # pairs <socket> <table> — normalized effective key<TAB>command rows.
 # list-keys quotes punctuation when needed, but never puts whitespace inside a key token. Find the

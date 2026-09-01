@@ -36,6 +36,16 @@ up for you. `bootstrap.sh` warns if it is somewhere else.
 executable, wires `shell/functions.sh` into your rc inside a `# >>> tmux-functions >>>` block, then
 runs `scripts/doctor.sh --brief`. It coexists with an existing Zellij install (separate servers).
 
+### Terminal identity and redraws
+
+Ghostty identifies the outer terminal as `xterm-ghostty`; inside tmux this config deliberately
+keeps `default-terminal` as `tmux-256color`. Do not export a fixed `TERM` from the shell: tmux and
+SSH must be allowed to describe each hop. The exact outer-terminal feature entry is
+`xterm-ghostty:RGB:sync`, enabling truecolour and synchronized updates without pretending that the
+inner terminal is Ghostty. It occupies a fixed `terminal-features` array slot, so reloading the
+configuration cannot append duplicate entries. Remote hosts still need the matching terminfo entry
+for the `TERM` they receive.
+
 **What you should see:** a status bar at the **top**, blank on the left, a centred window list where
 each tab is a two-tone pill, and on the right one pill for the current session.
 
