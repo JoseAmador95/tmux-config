@@ -264,8 +264,14 @@ parse_and_invariants() {
   version_minor=${version_number#*.}
   version_minor=${version_minor%%.*}
   if [ "$version_major" -gt 3 ] || { [ "$version_major" -eq 3 ] && [ "$version_minor" -ge 6 ]; }; then
-    expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" show-options -wgv pane-scrollbars)" modal \
-      '3.6 pane-scrollbars guard' || return
+    expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" show-options -wgv pane-scrollbars)" off \
+      '3.6 pane-scrollbars remain stable-width' || return
+    mode_pane=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t base '#{pane_id}') || return
+    normal_width=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$mode_pane" '#{pane_width}') || return
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" copy-mode -t "$mode_pane" || return
+    copy_width=$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$mode_pane" '#{pane_width}') || return
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" send-keys -t "$mode_pane" -X cancel || return
+    expect_equal "$copy_width" "$normal_width" 'copy-mode preserves pane width' || return
     [ -n "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" show-hooks -g client-light-theme 2>/dev/null)" ] || {
       printf '3.6 client-light-theme hook is absent\n'; return 1;
     }

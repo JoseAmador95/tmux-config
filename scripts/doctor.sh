@@ -112,9 +112,9 @@ else
   else
     pass "tmux $TMUX_VERSION satisfies the 3.4 floor"
     if version_at_least "$TMUX_VERSION" 3 6; then
-      pass 'tmux 3.6 guarded light/dark hooks and copy-mode scrollbar are active'
+      pass 'tmux 3.6 guarded light/dark hooks and stable-width copy-mode UI are active'
     else
-      [ "$BRIEF" -eq 1 ] || printf 'INFO  tmux 3.6 guarded theme/scrollbar surfaces are inactive\n'
+      [ "$BRIEF" -eq 1 ] || printf 'INFO  tmux 3.6 guarded theme/copy-position surfaces are inactive\n'
     fi
     if version_at_least "$TMUX_VERSION" 3 7; then
       pass 'tmux 3.7 tree preview and native floating-pane support are active'
