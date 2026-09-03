@@ -26,7 +26,7 @@ up for you. `bootstrap.sh` warns if it is somewhere else.
 
 | Need               | Why                                                                                                                                                       |
 | ------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **tmux ≥ 3.4**     | the floor; the config works throughout. Automatic light/dark plus modal scrollbar/copy-position styling need **3.6**; the tree-preview accent needs **3.7**. Older supported versions keep tmux's defaults for those optional surfaces. |
+| **tmux ≥ 3.4**     | the floor; the config works throughout. Automatic light/dark and compact copy-position styling need **3.6**; the tree-preview accent needs **3.7**. Older supported versions keep tmux's defaults for those optional surfaces. |
 | **`fzf`**          | required by `Alt-Space`, `prefix + ?`, `prefix + e` and `prefix + u`, which are fzf popups with no fallback. (`Alt-s` is tmux's own tree and needs nothing.) |
 | **A Nerd Font**    | the bar's pill caps and per-window icons.                                                                                                                 |
 | **A UTF-8 locale** | with `LC_CTYPE=POSIX` tmux silently drops the Nerd Font glyphs and the pills lose their rounded ends.                                                     |
@@ -35,6 +35,16 @@ up for you. `bootstrap.sh` warns if it is somewhere else.
 `bootstrap.sh` is idempotent — re-run it any time. It fetches the submodules, marks the scripts
 executable, wires `shell/functions.sh` into your rc inside a `# >>> tmux-functions >>>` block, then
 runs `scripts/doctor.sh --brief`. It coexists with an existing Zellij install (separate servers).
+
+### Terminal identity and redraws
+
+Ghostty identifies the outer terminal as `xterm-ghostty`; inside tmux this config deliberately
+keeps `default-terminal` as `tmux-256color`. Do not export a fixed `TERM` from the shell: tmux and
+SSH must be allowed to describe each hop. The exact outer-terminal feature entry is
+`xterm-ghostty:RGB:sync`, enabling truecolour and synchronized updates without pretending that the
+inner terminal is Ghostty. It occupies a fixed `terminal-features` array slot, so reloading the
+configuration cannot append duplicate entries. Remote hosts still need the matching terminfo entry
+for the `TERM` they receive.
 
 **What you should see:** a status bar at the **top**, blank on the left, a centred window list where
 each tab is a two-tone pill, and on the right one pill for the current session.
@@ -429,10 +439,10 @@ current-session pill.
 **without** leaving copy mode, and the selection also reaches the system clipboard. `q` / `Esc` exits.
 
 Searches paint ordinary matches yellow and the current match mauve; the copy-mode mark is red. On
-**tmux ≥ 3.6**, a compact position card shows the scroll/search context and a modal blue scrollbar
-appears on the right **only in copy/view mode**. That scrollbar temporarily consumes one column, so
-the pane narrows and reflows while the mode is active, then returns to its normal width on exit.
-tmux 3.4 and 3.5 keep the default position UI and have no scrollbar.
+**tmux ≥ 3.6**, a compact position card shows the scroll/search context. Pane scrollbars stay off:
+tmux narrows and reflows a pane whenever even a modal scrollbar appears, which would move wrapped
+text underneath an in-progress keyboard or mouse selection. tmux 3.4 and 3.5 keep the default
+position UI.
 
 `d` / `u` jump ten lines, like vim's `10j` / `10k` — deliberately not half a page, which `C-d` /
 `C-u` already do. They exist because overshooting the bottom with `C-d` sends the extra keypress
