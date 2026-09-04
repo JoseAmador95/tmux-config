@@ -142,9 +142,90 @@ tcopy() {
 
 # ── OSC 133 semantic prompts (so `prefix + Y` can copy only the last output) ────────────────
 # tmux (>=3.4) moves between prompts with previous-prompt/next-prompt ONLY if the shell marks
-# where the prompt (OSC 133;A) and the output (OSC 133;C) begin. We emit them from zsh inside
-# tmux; the `prefix + Y` binding (tmux.conf) uses these marks. If your terminal (e.g. Ghostty)
-# already emits OSC 133, export T_NO_OSC133=1 to avoid duplicate marks.
+# where the prompt (OSC 133;A) and the output (OSC 133;C) begin. We emit them from interactive Bash
+# and zsh inside tmux; the `prefix + Y` binding (tmux.conf) uses these marks. If your terminal (e.g.
+# Ghostty) already emits OSC 133, export T_NO_OSC133=1 before sourcing this file to opt out.
+if [ -n "${BASH_VERSION:-}" ] && [ -n "${TMUX:-}" ] && [ -z "${T_NO_OSC133:-}" ]; then
+  case $- in
+    *i*)
+      _t_osc133_command_ready=0
+      _t_osc133_precmd() {
+        printf '\033]133;A\033\\'
+        _t_osc133_command_ready=1
+      }
+      _t_osc133_preexec() {
+        [ "${_t_osc133_command_ready:-0}" -eq 1 ] || return 0
+        _t_osc133_command_ready=0
+        printf '\033]133;C\033\\'
+      }
+
+      _t_osc133_prepare_debug() {
+        local _t_osc133_prepare_spec=$1
+        local _t_osc133_previous_debug=''
+        case "$_t_osc133_prepare_spec" in
+          *'_t_osc133_preexec'*) _t_osc133_debug_install='' ; return 0 ;;
+        esac
+        if [ -n "$_t_osc133_prepare_spec" ]; then
+          _t_osc133_prepare_spec=${_t_osc133_prepare_spec#trap -- }
+          # `trap -p` produces shell-quoted argv. Evaluate only that Bash-produced quoting inside
+          # this helper's private positional parameters; the prior action itself is not executed.
+          eval "set -- $_t_osc133_prepare_spec"
+          [ "${2:-}" = DEBUG ] && _t_osc133_previous_debug=$1
+        fi
+        if [ -n "$_t_osc133_previous_debug" ]; then
+          _t_osc133_debug_install="_t_osc133_preexec; $_t_osc133_previous_debug"
+        else
+          _t_osc133_debug_install=_t_osc133_preexec
+        fi
+      }
+
+      # Bash restores a caller's DEBUG trap when a sourced file returns. The final PROMPT_COMMAND
+      # entry therefore captures and composes the trap at prompt scope, where the installation is
+      # durable. _t_osc133_precmd stays last: it arms exactly the next user command, not another
+      # prompt hook. Re-evaluation is harmless and also repairs a framework that later replaces DEBUG.
+      _t_osc133_prompt_hook='_t_osc133_debug_spec=$(trap -p DEBUG); _t_osc133_prepare_debug "$_t_osc133_debug_spec"; if [ -n "$_t_osc133_debug_install" ]; then trap -- "$_t_osc133_debug_install" DEBUG; fi; _t_osc133_precmd'
+
+      # PROMPT_COMMAND may be either a scalar command string or an indexed array. Keep its type and
+      # every existing entry, and install our precmd hook exactly once so it is the final action before
+      # Bash draws PS1. Bash 3.2 accepts an array but executes only element zero; compose every entry
+      # into element zero there while retaining the remaining array entries for callers that inspect
+      # them. Modern Bash executes each array entry and can append the hook directly.
+      _t_osc133_prompt_decl=$(declare -p PROMPT_COMMAND 2>/dev/null || :)
+      case "$_t_osc133_prompt_decl" in
+        'declare -a'*)
+          _t_osc133_prompt_found=0
+          for _t_osc133_prompt_entry in "${PROMPT_COMMAND[@]}"; do
+            case "$_t_osc133_prompt_entry" in
+              *"$_t_osc133_prompt_hook"*) _t_osc133_prompt_found=1 ;;
+            esac
+          done
+          if [ "$_t_osc133_prompt_found" -eq 0 ]; then
+            if [ "${BASH_VERSINFO[0]}" -lt 5 ] || {
+              [ "${BASH_VERSINFO[0]}" -eq 5 ] && [ "${BASH_VERSINFO[1]}" -lt 1 ]
+            }; then
+              _t_osc133_prompt_combined=''
+              for _t_osc133_prompt_entry in "${PROMPT_COMMAND[@]}"; do
+                _t_osc133_prompt_combined="${_t_osc133_prompt_combined}${_t_osc133_prompt_combined:+;}${_t_osc133_prompt_entry}"
+              done
+              PROMPT_COMMAND[0]="${_t_osc133_prompt_combined}${_t_osc133_prompt_combined:+;}$_t_osc133_prompt_hook"
+            else
+              PROMPT_COMMAND+=("$_t_osc133_prompt_hook")
+            fi
+          fi
+          ;;
+        *)
+          case ";${PROMPT_COMMAND:-};" in
+            *";$_t_osc133_prompt_hook;"*) ;;
+            *) PROMPT_COMMAND="${PROMPT_COMMAND:+${PROMPT_COMMAND};}$_t_osc133_prompt_hook" ;;
+          esac
+          ;;
+      esac
+      unset _t_osc133_prompt_decl _t_osc133_prompt_found _t_osc133_prompt_entry \
+        _t_osc133_prompt_combined
+      ;;
+  esac
+fi
+
 if [ -n "${ZSH_VERSION:-}" ] && [ -n "${TMUX:-}" ] && [ -z "${T_NO_OSC133:-}" ]; then
   _t_osc133_precmd()  { printf '\033]133;A\033\\'; }   # prompt start
   _t_osc133_preexec() { printf '\033]133;C\033\\'; }   # command output start

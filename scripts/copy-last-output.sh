@@ -14,9 +14,10 @@
 # reports success. This script does the same sequence and then checks whether a buffer actually
 # appeared, so the failure names its own cause instead of looking like a broken key.
 #
-# The marks come from shell/functions.sh, which emits both from zsh — but only when the shell is
-# zsh, $TMUX is set at rc-source time, T_NO_OSC133 is unset, and `autoload -Uz add-zsh-hook`
-# succeeds. If this reports no shell integration, run THIS inside a tmux pane:
+# The marks come from shell/functions.sh, which emits both from interactive Bash and zsh — but only
+# when $TMUX is set and T_NO_OSC133 is unset at source time (and, for zsh, when
+# `autoload -Uz add-zsh-hook` succeeds). If this reports no shell integration, run THIS inside a
+# tmux pane:
 #
 #     typeset -f _t_osc133_precmd >/dev/null && echo loaded || echo "functions.sh not sourced here"
 #     print -l $precmd_functions | grep osc133

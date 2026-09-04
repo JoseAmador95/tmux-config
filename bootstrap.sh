@@ -5,12 +5,13 @@
 # evaluated and rejected — its `#tag` pin is honoured on install only, changing one is a no-op,
 # and its own last substantive commit was in 2023. `git submodule` does the same job natively.
 #
-# It DOES download, unlike the zellij bootstrap: step 3 fetches the submodules. Everything else
-# is local. It still seeds no permissions and expands no templates.
+# Online mode DOES download, unlike the zellij bootstrap: step 2 fetches the submodules and may run
+# the upstream Fingers wizard. Strict --offline mode performs neither operation and refuses to make
+# persistent changes until the complete pinned runtime is already present.
 #
 # What it does:
 #   1) warn if the repo is not at ~/.config/tmux (tmux auto-loads ~/.config/tmux/tmux.conf)
-#   2) fetch the plugin submodules and the one plugin binary that needs fetching
+#   2) fetch the plugin submodules and the one plugin binary that needs fetching (online only)
 #   3) chmod +x the scripts
 #   4) wire `source shell/functions.sh` into the rc, idempotently
 #   5) run the read-only environment doctor once installation is complete
@@ -19,22 +20,64 @@ set -eu
 info() { printf '  \033[32m✓\033[0m %s\n' "$1"; }
 warn() { printf '  \033[33m!\033[0m %s\n' "$1"; }
 
-DIR=$(cd "$(dirname "$0")" && pwd)
+DIR=$(cd "$(dirname "$0")" && pwd -P)
 cd "$DIR"
 
 # --- 0. args -----------------------------------------------------------------
 SKIP_PLUGINS=0
+OFFLINE=0
+SHOW_HELP=0
 for arg in "$@"; do
   case "$arg" in
     -h|--help)
-      printf 'usage: ./bootstrap.sh [--no-plugins]\n\n'
-      printf 'Idempotent installer for tmux-config.\n'
-      printf 'Fetches the plugin submodules unless --no-plugins is given.\n'
-      exit 0 ;;
-    --no-plugins) SKIP_PLUGINS=1 ;;
-    *) warn "unknown arg: $arg (ignored)" ;;
+      [ "$SHOW_HELP" -eq 0 ] || { printf 'bootstrap: duplicate help option\n' >&2; exit 2; }
+      SHOW_HELP=1
+      ;;
+    --offline)
+      [ "$OFFLINE" -eq 0 ] || { printf 'bootstrap: duplicate --offline option\n' >&2; exit 2; }
+      OFFLINE=1
+      ;;
+    --no-plugins)
+      [ "$SKIP_PLUGINS" -eq 0 ] || {
+        printf 'bootstrap: duplicate --no-plugins option\n' >&2
+        exit 2
+      }
+      SKIP_PLUGINS=1
+      ;;
+    *)
+      printf 'bootstrap: unknown option: %s\n' "$arg" >&2
+      exit 2
+      ;;
   esac
 done
+
+if [ "$SHOW_HELP" -eq 1 ]; then
+  [ "$#" -eq 1 ] || { printf 'bootstrap: help cannot be combined with other options\n' >&2; exit 2; }
+  printf 'usage: ./bootstrap.sh [--offline | --no-plugins]\n\n'
+  printf 'Idempotent installer for tmux-config.\n'
+  printf '  --offline     require the complete pinned local runtime; perform no network operations\n'
+  printf '  --no-plugins  skip plugin installation in online personal-bootstrap mode\n'
+  printf '\nOffline mode requires this checkout\047s local tmux-fingers 2.7.1 artifact.\n'
+  printf 'The custom-cloud consumer owns its pinned URL and checksum; this repo validates runtime.\n'
+  exit 0
+fi
+
+if [ "$OFFLINE" -eq 1 ] && [ "$SKIP_PLUGINS" -eq 1 ]; then
+  printf 'bootstrap: --offline and --no-plugins cannot be combined\n' >&2
+  exit 2
+fi
+
+# Strict offline validation is intentionally before the location warning, chmod, rc selection and
+# doctor. A failed appliance preflight must leave every persistent path exactly as it found it.
+if [ "$OFFLINE" -eq 1 ]; then
+  # shellcheck source=scripts/runtime-contract.sh
+  . "$DIR/scripts/runtime-contract.sh"
+  if ! t_contract_preflight "$DIR"; then
+    printf 'bootstrap: offline preflight failed; no persistent changes were made\n' >&2
+    exit 1
+  fi
+  info "offline runtime contract $T_RUNTIME_CONTRACT_VERSION is complete"
+fi
 
 # --- 1. location -------------------------------------------------------------
 if [ "$DIR" = "$HOME/.config/tmux" ]; then
@@ -48,7 +91,9 @@ fi
 # The only step that touches the network. Submodules are pinned by SHA, so this is reproducible:
 # it checks out exactly what this repo records, never "whatever upstream has today". Updating a
 # plugin is a deliberate `git submodule update --remote <path>` plus a commit.
-if [ "$SKIP_PLUGINS" -eq 1 ]; then
+if [ "$OFFLINE" -eq 1 ]; then
+  info "offline mode: pinned plugin submodules already match"
+elif [ "$SKIP_PLUGINS" -eq 1 ]; then
   warn "skipping plugins (--no-plugins); tmux.conf degrades gracefully without them"
 elif [ ! -f "$DIR/.gitmodules" ]; then
   warn "no .gitmodules — nothing to fetch"
@@ -71,7 +116,9 @@ fi
 # macOS arm64 only; anywhere else this warns and Fingers stays inert, so prefix + f retains tmux's
 # find-window. Alt-f remains shell word navigation independently of whether the binary is present.
 FINGERS_DIR="$DIR/plugins/tmux-fingers"
-if [ "$SKIP_PLUGINS" -eq 1 ] || [ ! -f "$FINGERS_DIR/install-wizard.sh" ]; then
+if [ "$OFFLINE" -eq 1 ]; then
+  info "offline mode: repository-local tmux-fingers $T_FINGERS_VERSION is ready"
+elif [ "$SKIP_PLUGINS" -eq 1 ] || [ ! -f "$FINGERS_DIR/install-wizard.sh" ]; then
   :
 elif command -v tmux-fingers >/dev/null 2>&1; then
   info "tmux-fingers found in PATH"

@@ -36,6 +36,28 @@ up for you. `bootstrap.sh` warns if it is somewhere else.
 executable, wires `shell/functions.sh` into your rc inside a `# >>> tmux-functions >>>` block, then
 runs `scripts/doctor.sh --brief`. It coexists with an existing Zellij install (separate servers).
 
+For a provisioned appliance, use strict offline mode only after image/build automation has supplied
+the complete runtime:
+
+```sh
+report_dir=$(mktemp -d "${TMPDIR:-/tmp}/tmux-runtime-report.XXXXXX")
+chmod 700 "$report_dir"
+~/.config/tmux/bootstrap.sh --offline
+~/.config/tmux/scripts/check-runtime.sh \
+  --shell /bin/bash --report "$report_dir/runtime.json"
+```
+
+`--offline` performs **zero network operations**. Before chmod, rc wiring, or any other persistent
+change, it requires a direct Git checkout, every recursive submodule at its recorded gitlink with
+no staged or tracked worktree changes, all four loaders, and the regular executable
+`plugins/tmux-fingers/bin/tmux-fingers` reporting exactly `2.7.1`. It cannot be combined with
+`--no-plugins`; unknown, duplicate, or incompatible options exit `2` before mutation or network.
+The `custom-cloud` consumer owns the pinned URL and checksum that place the platform artifact; this
+repository owns the expected version and validates its runtime. That consumer runs the report in a
+private `custom-cloud-tmux-runtime-*` temporary directory, validates mode `0600`, persists only its
+SHA256 evidence, and deletes the raw report. Personal online bootstrap remains available and may
+use the upstream installer, but offline mode has no hidden latest-release lookup or fallback.
+
 ### Terminal identity and redraws
 
 Ghostty identifies the outer terminal as `xterm-ghostty`; inside tmux this config deliberately
@@ -280,9 +302,10 @@ what moved.
 **`tmux-fingers` is a compiled binary**, and prebuilt ones exist for **Linux x86_64 and macOS arm64
 only**. Anywhere else, build it with Crystal or `brew install morantron/tmux-fingers/tmux-fingers`;
 until then `prefix + f` keeps tmux's `find-window`. `Alt-f` remains shell word navigation whether or
-not that binary exists. `bootstrap.sh` fetches the binary, and `tmux.conf` refuses to load the plugin
-until it exists — its own loader would otherwise fire a network installer in the background _every
-time the config is sourced_.
+not that binary exists. Online personal `bootstrap.sh` may fetch the binary; appliance
+`bootstrap.sh --offline` only accepts the repository-local `2.7.1` artifact already supplied by the
+consumer. `tmux.conf` refuses to load the plugin until a binary exists — its own loader would
+otherwise fire a network installer in the background _every time the config is sourced_.
 
 Copy-mode `o` / `C-o` are intentionally config-owned. `scripts/open-selection.sh` validates the
 selection once and resolves relative paths from the source pane. System-open uses the host opener;
@@ -448,6 +471,13 @@ position UI.
 `C-u` already do. They exist because overshooting the bottom with `C-d` sends the extra keypress
 through as EOF and closes the shell, while `d` / `u` never leave copy mode.
 
+`prefix + Y` depends on OSC 133 prompt/output marks. `shell/functions.sh` installs them only in an
+interactive Bash or zsh that is already inside tmux. Its Bash integration preserves scalar,
+indexed-array and sparse-array `PROMPT_COMMAND` values plus an existing `DEBUG` trap; repeated
+sourcing stays idempotent. Set `T_NO_OSC133=1` **before** sourcing to keep another terminal or
+prompt integration as the sole owner. `prefix + f` remains Fingers, `prefix + J` remains pane
+resize, and `Alt-f` remains unbound in tmux's root table.
+
 The `dev` tool windows (`agent · editor · git`) stay put when their app exits — the pane goes _dead_
 instead of the window closing, so `prefix + R` relaunches it (`term` stays a disposable shell).
 
@@ -569,6 +599,8 @@ Use the maintained entry points rather than assembling a partial check by hand:
 ./scripts/doctor.sh             # full read-only environment report
 ./scripts/doctor.sh --brief     # concise hard-failure/warning summary
 ./scripts/check-config.sh       # syntax, docs, parse, smoke and runtime contract tests
+./scripts/check-runtime.sh --contract-version
+./scripts/check-runtime.sh --shell /bin/bash --report /absolute/private/path/runtime.json
 ```
 
 The doctor exits nonzero for hard requirements such as tmux < 3.4, a non-UTF-8 locale, a missing
@@ -576,3 +608,17 @@ core command or a config parse failure. Missing optional tools and feature probe
 leave the exit status at zero. `check-config.sh` creates fresh isolated sockets and temporary
 HOME/state for every runtime scenario; it never targets the live server. CI runs the same two
 commands on Ubuntu 24.04 for pushes and pull requests with the four submodules checked out.
+
+`check-runtime.sh` requires the production Fingers artifact and clean, complete gitlinks. It
+materializes the committed root tree and exact recursive-submodule trees, then adds only the
+separately validated repository-local Fingers executable. Dirty or unrelated untracked plugin
+content is never exposed. The checker sources `tmux.conf` twice on one private exact `-S` socket,
+proves the stable-width copy-mode settings and bindings, exercises interactive Bash OSC 133 and
+`prefix + Y`, and cleans only the exact server and temporary paths it created. It never addresses
+the ambient tmux server and has no zsh or ShellCheck runtime dependency.
+
+The deterministic report is mode `0600`: `schema_version` and `contract_version` are `1`; check
+states are `pass`, `fail`, or `not_run`; evidence and failure IDs are fixed and bounded. It contains
+no timestamp, PID, temporary path, environment value, or secret. Bad CLI arguments exit `2`, a
+contract or report failure exits `1`, and success exits `0`. `--contract-version` prints exactly
+`1` without requiring tmux. The report is raw short-lived evidence, not a durable state file.

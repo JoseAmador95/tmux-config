@@ -30,7 +30,7 @@ run_check() {
 }
 
 syntax_posix() {
-  sh -n scripts/*.sh bootstrap.sh sessions/*.conf
+  sh -n scripts/*.sh bootstrap.sh sessions/*.conf tests/*.sh tests/lib/*.sh tests/fixtures/*
 }
 
 syntax_functions() {
@@ -45,19 +45,24 @@ lint_posix() {
     return 1
   }
   # functions.sh is intentionally Bash/Zsh hybrid and is syntax-checked by both shells above.
-  shellcheck -x -s sh scripts/*.sh bootstrap.sh sessions/*.conf
+  shellcheck -x -s sh scripts/*.sh bootstrap.sh sessions/*.conf \
+    tests/*.sh tests/lib/*.sh tests/fixtures/*
 }
 
 run_check 'POSIX shell syntax' syntax_posix
 run_check 'Bash/Zsh function syntax' syntax_functions
 run_check 'ShellCheck for POSIX files' lint_posix
 run_check 'key documentation matches effective bindings' ./scripts/check-docs.sh
+run_check 'interactive Bash OSC 133 hooks' ./tests/test-bash-osc133.sh
 
 if ! command -v tmux >/dev/null 2>&1; then
   printf 'FAIL  isolated tmux tests (tmux is not in PATH)\n'
   printf 'check-config: %s failure(s) across %s checks\n' "$((FAILURES + 1))" "$((TESTS + 1))"
   exit 1
 fi
+
+run_check 'strict offline bootstrap contract' ./tests/test-bootstrap-offline.sh
+run_check 'deterministic runtime report contract' ./tests/test-runtime-report.sh
 
 TMP=$(mktemp -d /tmp/tmux-check.XXXXXX) || exit 1
 TEST_HOME=$TMP/home

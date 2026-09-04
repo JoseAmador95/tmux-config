@@ -1,0 +1,21 @@
+#!/bin/sh
+# Deterministic stand-in for the upstream 2.7.1 binary. Production checks never fall back to it.
+set -u
+
+case "${1:-}" in
+  version)
+    printf '2.7.1\n'
+    ;;
+  load-config)
+    fixture_dir=$(cd "$(dirname "$0")" && pwd)
+    tmux set-option -g @fingers-cli "$fixture_dir/tmux-fingers"
+    tmux bind-key -T Fingers Escape switch-client -T prefix
+    ;;
+  start)
+    :
+    ;;
+  *)
+    printf 'fixture tmux-fingers: unsupported command: %s\n' "${1:-}" >&2
+    exit 64
+    ;;
+esac
