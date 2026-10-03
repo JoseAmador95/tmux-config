@@ -83,47 +83,26 @@ editor_count=$(printf '%s\n' "$editor_panes" | awk 'NF { count++ } END { print c
   say "editor window must contain exactly one pane; found $editor_count"
   exit 1
 }
+editor_pane=$(printf '%s\n' "$editor_panes" | sed -n '1p')
 
-devpod_helper=${HOME:-}/.config/nvim/scripts/devpod-nvim
-if [ -x "$devpod_helper" ]; then
-  devpod_output=$(
-    "$devpod_helper" open-location \
-      --cwd "$repo" \
-      --file "$target" \
-      --line "$line" \
-      --column 1 2>&1
-  )
-  devpod_status=$?
-  if [ "$devpod_status" -eq 0 ]; then
-    tmux select-window -t "$editor_window"
-    exit $?
-  fi
-  # Exit 3 is the public no-active-DevPod result. Any other status belongs
-  # to an active or ambiguous bridge and must not fall through to host RPC.
-  if [ "$devpod_status" -ne 3 ]; then
-    [ -n "$devpod_output" ] || devpod_output='DevPod editor rejected the request'
-    say "$devpod_output"
-    exit "$devpod_status"
-  fi
-fi
-
-rpc_helper=${HOME:-}/.config/nvim/scripts/nvim-review-open
-[ -x "$rpc_helper" ] || {
-  say "Neovim RPC helper is not executable: $rpc_helper"
+editor_helper=${HOME:-}/.config/nvim/scripts/devcontainer-editor
+[ -x "$editor_helper" ] || {
+  say "Neovim editor router is not executable: $editor_helper"
   exit 1
 }
-rpc_output=$(
-  "$rpc_helper" \
+editor_output=$(
+  "$editor_helper" editor-open \
     --cwd "$repo" \
     --file "$target" \
     --line "$line" \
-    --column 1 2>&1
+    --column 1 \
+    --tmux-pane "$editor_pane" 2>&1
 )
-rpc_status=$?
-if [ "$rpc_status" -ne 0 ]; then
-  [ -n "$rpc_output" ] || rpc_output='registered editor rejected the request'
-  say "$rpc_output"
-  exit "$rpc_status"
+editor_status=$?
+if [ "$editor_status" -ne 0 ]; then
+  [ -n "$editor_output" ] || editor_output='registered editor rejected the request'
+  say "$editor_output"
+  exit "$editor_status"
 fi
 
 tmux select-window -t "$editor_window"

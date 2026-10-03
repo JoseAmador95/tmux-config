@@ -157,9 +157,9 @@ preflight() {
       return 1
     }
 
-  devpod_active=$(tmux show-option -pqv -t "$refresh_editor_pane" @devpod_active 2>/dev/null) || devpod_active=''
-  if [ "$devpod_active" = 1 ]; then
-    refresh_editor_mode=devpod
+  devcontainer_active=$(tmux show-option -pqv -t "$refresh_editor_pane" @devcontainer_active 2>/dev/null) || devcontainer_active=''
+  if [ -n "$devcontainer_active" ]; then
+    refresh_editor_mode=devcontainer
   else
     refresh_editor_mode=host
   fi
@@ -172,12 +172,15 @@ preflight() {
   refresh_config=$refresh_home/.config/tmux/tmux.conf
   refresh_agent=$refresh_home/.config/tmux/scripts/agent.sh
   refresh_lazygit=$refresh_home/.config/tmux/scripts/lazygit-window.sh
-  refresh_devpod=$refresh_home/.config/nvim/scripts/devpod-nvim
+  refresh_devcontainer=$refresh_home/.config/tmux/scripts/devcontainer-editor.sh
   [ -r "$refresh_config" ] || { fail "canonical config is not readable: $refresh_config"; return 1; }
   [ -x "$refresh_agent" ] || { fail "canonical agent launcher is not executable: $refresh_agent"; return 1; }
   [ -x "$refresh_lazygit" ] || { fail "canonical LazyGit launcher is not executable: $refresh_lazygit"; return 1; }
-  if [ "$refresh_editor_mode" = devpod ]; then
-    [ -x "$refresh_devpod" ] || { fail "DevPod launcher is not executable: $refresh_devpod"; return 1; }
+  if [ "$refresh_editor_mode" = devcontainer ]; then
+    [ -x "$refresh_devcontainer" ] || {
+      fail "Dev Container editor adapter is not executable: $refresh_devcontainer"
+      return 1
+    }
   fi
 }
 
@@ -214,11 +217,16 @@ same_topology() {
 }
 
 editor_command() {
-  if [ "$expected_editor_mode" = devpod ]; then
-    printf '%s\n' 'exec ~/.config/nvim/scripts/devpod-nvim up --restore-session'
-  else
-    printf '%s\n' 'exec env NVIM_TMUX_REFRESH_RESTORE=1 nvim'
+  printf '%s\n' 'exec env NVIM_TMUX_REFRESH_RESTORE=1 nvim'
+}
+
+restart_editor() {
+  if [ "$expected_editor_mode" = devcontainer ]; then
+    "$refresh_devcontainer" up "$expected_editor_pane"
+    return $?
   fi
+  recovery_command=$(editor_command)
+  tmux respawn-pane -k -t "$expected_editor_pane" -c "$expected_root" "$recovery_command"
 }
 
 editor_identity() {
@@ -236,8 +244,7 @@ recover_editor() {
       return 0
       ;;
     "$expected_session_id|$expected_editor_window|$expected_editor_pane|1")
-      recovery_command=$(editor_command)
-      if tmux respawn-pane -k -t "$expected_editor_pane" -c "$expected_root" "$recovery_command"; then
+      if restart_editor; then
         message 'recovered the editor pane with one-shot session restore'
         return 0
       fi
@@ -329,8 +336,7 @@ run_refresh() {
       return 1
     }
   message 'restarting editor'
-  final_editor_command=$(editor_command)
-  tmux respawn-pane -k -t "$expected_editor_pane" -c "$expected_root" "$final_editor_command" || {
+  restart_editor || {
     fail_after_editor_exit 'editor respawn failed'
     return 1
   }

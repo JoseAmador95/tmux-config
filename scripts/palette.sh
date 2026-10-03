@@ -27,7 +27,7 @@ items() {   # "tmux command<TAB>label" (printf recycles the format per pair)
     'run-shell "~/.config/tmux/scripts/split.sh '\''#{pane_id}'\'' horizontal"' 'split right' \
     'new-window -c "#{pane_current_path}"'                      'new window' \
     'resize-pane -Z'                                            'zoom pane (toggle)' \
-    'respawn-pane'                                              'revive pane (respawn)' \
+    'run-shell "~/.config/tmux/scripts/revive-pane.sh '\''#{pane_id}'\''"' 'revive pane (respawn)' \
     'command-prompt -I "#W" { rename-window "%%" }'            'rename window' \
     'command-prompt -I "#S" { rename-session "%%" }'           'rename session' \
     'command-prompt -p "new session:" { new-session -s "%%" }' 'new session' \
@@ -38,8 +38,8 @@ items() {   # "tmux command<TAB>label" (printf recycles the format per pair)
     'clock-mode'                                                'clock' \
     'detach-client'                                            'detach' \
     'source-file ~/.config/tmux/tmux.conf'                     'reload config' \
-    'run-shell "~/.config/tmux/scripts/devpod-editor.sh up '\''#{pane_id}'\''"'   'editor: DevPod' \
-    'run-shell "~/.config/tmux/scripts/devpod-editor.sh host '\''#{pane_id}'\''"' 'editor: host' \
+    'run-shell "~/.config/tmux/scripts/devcontainer-editor.sh up '\''#{pane_id}'\''"'   'editor: Dev Container' \
+    'run-shell "~/.config/tmux/scripts/devcontainer-editor.sh host '\''#{pane_id}'\''"' 'editor: host' \
     '!~/.config/tmux/scripts/tuicr-review.sh'                  'review current repository (tuicr)' \
     '!less ~/.config/tmux/README.md'                           'show documentation (README)' \
     'set -g @thm_flavor latte     \; run-shell "~/.config/tmux/scripts/theme.sh"'     'theme: latte (light)' \

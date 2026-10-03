@@ -180,9 +180,10 @@ protected by name as well as `@no_split`, while a config reload repairs those op
 `remain-on-exit` on already-open tool windows.
 
 In the `dev` layout, pressing `e` in the standalone LazyGit window opens the file in that session's
-single `editor` window and focuses it. The route is DevPod-aware: an active container editor owns
-the location; otherwise the already-registered host Neovim receives it. It never starts a second
-editor. LazyGit opened inside Neovim is intentionally separate and keeps its `nvim-remote` preset,
+single `editor` window and focuses it. The canonical Dev Container router sends the location to an
+active container editor; only an absent lifecycle may fall back to the already-registered host
+Neovim. An active, dead, or ambiguous lifecycle never opens a second editor. LazyGit opened inside
+Neovim is intentionally separate and keeps its `nvim-remote` preset,
 so `e` opens in the Neovim instance that owns that float. For a `git` pane created before this
 integration, reload tmux, quit LazyGit, and press `prefix + R` once; the revived pane then uses the
 new process-local config. No session restart is required.
@@ -240,12 +241,19 @@ red. Synchronize-panes alone intentionally keeps the normal blue focus frame.
 | `prefix + r` | reload `tmux.conf`                               | config |
 | `F12`        | OFF mode — every tmux key off, for a nested tmux | config |
 
-The `Alt-Space` palette also has **editor: DevPod** and **editor: host**. They create the exact
+The `Alt-Space` palette also has **editor: Dev Container** and **editor: host**. They create the exact
 single-pane `editor` window when it is absent, or reuse it when it already exists, then replace only
-that pane; agent, Git, LazyGit and tuicr stay on the host. DevPod uses
-`~/.config/nvim/scripts/devpod-nvim`, preserves the stable `editor` window name,
-and shows `DevPod · provider · project` in the pane frame. Exiting container Neovim leaves that pane
-dead under `remain-on-exit`; it never relaunches itself. **review current repository** starts or
+that pane; agent, Git, LazyGit and tuicr stay on the host. The adapter uses
+`~/.config/nvim/scripts/devcontainer-editor`, preserves the stable `editor` window name,
+and shows `Dev Container · project` in the pane frame. Exiting container Neovim leaves that pane
+dead under `remain-on-exit`; it never relaunches itself. Selecting the container action while its
+registered pane is still live verifies and focuses it without a restart. Selecting the host action
+uses the running coordinator's authenticated request/ACK spool, so it does not contend with the
+lifecycle lock that coordinator retains. Before a new claim, the tmux adapter calls the minimal
+headless Neovim runtime helper: it reads the host `~/.nvim-local.lua`, resolves only the certified
+offline `devcontainers-cli` active bundle, canonicalizes the configured Docker-compatible engine,
+and completes a read-only doctor. A dead pane instead preflights its v4 record and reuses both
+persisted paths; a live pane performs neither resolution nor doctor. **review current repository** starts or
 focuses a private `tuicr` review, while **show documentation** pages this README. Those latter two
 are the `!`-prefixed raw host workflows; all other entries are curated tmux commands
 (`eval tmux …`). The palette remains `60% × 55%`; only tuicr reopens as a dedicated `95% × 95%`
@@ -262,11 +270,12 @@ session's one `editor` window and that `agent`, `editor`, `git` and `term` are e
 once as single-pane windows. It then hands coordination to tmux itself, waits up to five seconds for
 Neovim to exit, reloads the canonical `~/.config/tmux/tmux.conf` (including global work/local
 layers), and respawns `agent`, standalone LazyGit, then the editor in their existing panes. Host
-Neovim receives `NVIM_TMUX_REFRESH_RESTORE=1`; a pane marked `@devpod_active=1` returns through
-`devpod-nvim up --restore-session` instead.
+Neovim receives `NVIM_TMUX_REFRESH_RESTORE=1`; a pane carrying `@devcontainer_active` returns through
+the launcher's explicit `restart-dead` path instead. That path retains the workspace flock, checks
+the exact pane and a fresh claim, and reuses the CLI and engine paths persisted by the original lifecycle.
 
 The refresh preserves the four window/pane IDs, the dev session root, tool-window
-`remain-on-exit`/`@no_split` policy, and the editor's host-or-DevPod mode. It never selects, kills or
+`remain-on-exit`/`@no_split` policy, and the editor's host-or-container mode. It never selects, kills or
 respawns `term`, and it never restarts a process in another session. The config reload is global by
 design, so option/binding changes still become visible server-wide. Extra application state is not
 serialized: restoration is the editor's one-shot session restore plus each canonical launcher. A
@@ -309,17 +318,18 @@ otherwise fire a network installer in the background _every time the config is s
 
 Copy-mode `o` / `C-o` are intentionally config-owned. `scripts/open-selection.sh` validates the
 selection once and resolves relative paths from the source pane. System-open uses the host opener;
-editor-open sends `file:line:column` first through the active DevPod mapping. It consults
-`~/.config/nvim/scripts/nvim-review-open` only when the DevPod launcher returns its exact “no active
-editor” status. An active-but-unreachable or ambiguous bridge fails visibly instead of opening the
-same path in a second editor. Neither helper ever launches an unregistered Neovim; this does not
-justify a fifth submodule.
+editor-open sends `file:line:column` through
+`~/.config/nvim/scripts/devcontainer-editor editor-open`. That one router performs the locked
+active-container-or-exact-host decision. Only a missing lifecycle permits host fallback;
+active-but-unreachable, dead, and ambiguous states fail visibly instead of opening the same path in
+a second editor. The helper never launches an unregistered Neovim; this does not justify a fifth
+submodule.
 
 In the standalone `git` window, LazyGit's selected-branch `C` action keeps the interactive
 `gh pr create` questions in LazyGit. If `gh` opens an editor for the title or body,
 `scripts/lazygit-pr-editor.sh` waits for the registered host Neovim, focuses the exact `editor`
 window only after Neovim acknowledges the file, then returns to `git` when editing finishes. The
-temporary GitHub text is a host file, so an active DevPod editor is not used as a fallback; with no
+temporary GitHub text is a host file, so an active Dev Container editor is not used as a fallback; with no
 matching host editor the handoff fails closed and leaves the PR uncreated.
 
 Three replaced hand-written code: `fuzzback.sh` and `grab.sh` were reimplementations of
@@ -480,6 +490,8 @@ resize, and `Alt-f` remains unbound in tmux's root table.
 
 The `dev` tool windows (`agent · editor · git`) stay put when their app exits — the pane goes _dead_
 instead of the window closing, so `prefix + R` relaunches it (`term` stays a disposable shell).
+A marked Dev Container editor always revives through its validated `restart-dead` lifecycle; the
+shortcut and the palette never issue a raw `respawn-pane` for it.
 
 ---
 

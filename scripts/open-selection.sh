@@ -6,8 +6,8 @@
 #
 # --system passes http/https URLs directly to open(1) or xdg-open(1). Every other target must be
 # an existing path. --editor sends one opaque request to the already-registered Neovim for this
-# repository. An active DevPod editor owns the target first; the host registry
-# is consulted only when the launcher reports that no DevPod editor is active.
+# repository. The Dev Container launcher owns the atomic active-container or
+# exact-host decision; callers never implement a second fallback path.
 #
 # THE SELECTION IS UNTRUSTED. It is whatever happened to be on screen. Never splice it, the pane
 # id, the cwd, or a target into an unquoted shell fragment. Every helper receives direct argv.
@@ -114,45 +114,22 @@ if [ "$mode" = --system ]; then
   exit $?
 fi
 
-devpod_helper=${HOME:-}/.config/nvim/scripts/devpod-nvim
-if [ -x "$devpod_helper" ]; then
-  devpod_output=$(
-    "$devpod_helper" open-location \
-      --cwd "$dir" \
-      --file "$target" \
-      --line "${line:-1}" \
-      --column "${column:-1}" 2>&1
-  )
-  devpod_status=$?
-  if [ "$devpod_status" -eq 0 ]; then
-    exit 0
-  fi
-  # Exit 3 is the launcher's explicit, fail-closed "no active editor" result.
-  # Every other failure belongs to an active/ambiguous bridge and must not be
-  # hidden by sending the same path to a different editor.
-  if [ "$devpod_status" -ne 3 ]; then
-    [ -n "$devpod_output" ] || devpod_output='DevPod editor rejected the request'
-    say "$devpod_output"
-    exit "$devpod_status"
-  fi
-fi
-
-rpc_helper=${HOME:-}/.config/nvim/scripts/nvim-review-open
-if [ ! -x "$rpc_helper" ]; then
-  say "Neovim RPC helper is not executable: $rpc_helper"
+editor_helper=${HOME:-}/.config/nvim/scripts/devcontainer-editor
+if [ ! -x "$editor_helper" ]; then
+  say "Neovim editor router is not executable: $editor_helper"
   exit 1
 fi
 
-rpc_output=$(
-  "$rpc_helper" \
+editor_output=$(
+  "$editor_helper" editor-open \
     --cwd "$dir" \
     --file "$target" \
     --line "${line:-1}" \
     --column "${column:-1}" 2>&1
 )
-rpc_status=$?
-if [ "$rpc_status" -ne 0 ]; then
-  [ -n "$rpc_output" ] || rpc_output="registered editor rejected the request"
-  say "$rpc_output"
-  exit "$rpc_status"
+editor_status=$?
+if [ "$editor_status" -ne 0 ]; then
+  [ -n "$editor_output" ] || editor_output="registered editor rejected the request"
+  say "$editor_output"
+  exit "$editor_status"
 fi

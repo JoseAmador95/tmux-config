@@ -190,8 +190,8 @@ parse_and_invariants() {
     printf 'stable tuicr review palette entry is absent\n'
     return 1
   }
-  grep -F "'editor: DevPod'" "$ROOT/scripts/palette.sh" >/dev/null || {
-    printf 'stable DevPod editor palette entry is absent\n'
+  grep -F "'editor: Dev Container'" "$ROOT/scripts/palette.sh" >/dev/null || {
+    printf 'stable Dev Container editor palette entry is absent\n'
     return 1
   }
   grep -F "'editor: host'" "$ROOT/scripts/palette.sh" >/dev/null || {
@@ -230,12 +230,12 @@ parse_and_invariants() {
     return 1
   }
   for tool_window in agent editor git; do
-    grep -Eq "tmux set-option -w -t \"\\\$SESS:${tool_window}\"[[:space:]]+remain-on-exit on" \
+    grep -Eq "tmux set-option -w -t \"\\\$\\{SESS\\}:${tool_window}\"[[:space:]]+remain-on-exit on" \
       "$ROOT/sessions/dev.conf" || {
         printf '%s tool window does not retain its pane on application exit\n' "$tool_window"
         return 1
       }
-    grep -Eq "tmux set-option -w -t \"\\\$SESS:${tool_window}\"[[:space:]]+@no_split 1" \
+    grep -Eq "tmux set-option -w -t \"\\\$\\{SESS\\}:${tool_window}\"[[:space:]]+@no_split 1" \
       "$ROOT/sessions/dev.conf" || {
         printf '%s tool window is not protected from splits\n' "$tool_window"
         return 1
@@ -307,37 +307,71 @@ write_fakes() {
   # shellcheck disable=SC2016
   printf '%s\n' '#!/bin/sh' 'printf "%s\\n" "$1" > "$OPEN_LOG"' > "$TEST_BIN/open"
   mkdir -p "$TEST_HOME/.config/nvim/scripts" "$TEST_HOME/.config/tuicr" || return
-  # The blocking-editor mode reports readiness, observes the selected window,
-  # then returns a caller-controlled status. Ordinary editor RPC still only
-  # records argv and exits successfully.
+  # One fake models the canonical editor router and lifecycle entrypoint.
+  # Blocking host editing reports readiness; lifecycle commands respawn only
+  # the exact pane passed through direct argv.
   # shellcheck disable=SC2016
   printf '%s\n' '#!/bin/sh' \
+    'command=${1:-}; [ "$#" -gt 0 ] && shift' \
+    '[ -z "${DEVCONTAINER_FLOW_LOG:-}" ] || printf "launcher|%s\\n" "$command" >> "$DEVCONTAINER_FLOW_LOG"' \
+    'case "$command" in' \
+    'editor-open)' \
     'printf "%s\\n" "$@" > "$EDITOR_LOG"' \
     'if [ "${1:-}" = --wait-editor ]; then' \
     '  [ "${PR_EDITOR_NO_READY:-}" != 1 ] || exit "${PR_EDITOR_STATUS:-1}"' \
     '  if [ "${PR_EDITOR_HANG_READY:-}" = 1 ]; then while :; do sleep 1; done; fi' \
     '  if [ "${PR_EDITOR_INVALID_READY:-}" = 1 ]; then printf "READY\\nextra\\n"; sleep 1; exit 0; fi' \
     '  printf "READY\\n"' \
-    '  sleep 0.15' \
     '  if [ -n "${PR_EDITOR_FOCUS_LOG:-}" ]; then' \
     '    session=$(tmux display-message -p -t "$TMUX_PANE" "#{session_id}")' \
-    '    tmux display-message -p -t "$session" "#{window_name}" > "$PR_EDITOR_FOCUS_LOG"' \
+    '    attempts=0; current=git' \
+    '    while [ "$current" != editor ] && [ "$attempts" -lt 100 ]; do' \
+    '      current=$(tmux display-message -p -t "$session" "#{window_name}")' \
+    '      [ "$current" = editor ] || sleep 0.02' \
+    '      attempts=$((attempts + 1))' \
+    '    done' \
+    '    printf "%s\n" "$current" > "$PR_EDITOR_FOCUS_LOG"' \
     '  fi' \
     '  sleep 0.05' \
     '  exit "${PR_EDITOR_STATUS:-0}"' \
     'fi' \
-    'exit 0' > "$TEST_HOME/.config/nvim/scripts/nvim-review-open"
-  # Exit 3 is the public no-active-DevPod contract; tests override it to
-  # prove active success and active bridge failures do not reach host RPC.
+    'exit "${DEVCONTAINER_OPEN_STATUS:-0}" ;;' \
+    'new-claim-id) printf "%s\\n" 00000000-0000-4000-8000-000000000077 ;;' \
+    'wait-claim|wait-dead|check-active) exit 0 ;;' \
+    'host)' \
+    'while [ "$#" -gt 0 ]; do case "$1" in --repo) repo=$2; shift 2 ;; --tmux-pane) pane=$2; shift 2 ;; *) exit 2 ;; esac; done' \
+    '[ -z "${HOST_LAUNCH_LOG:-}" ] || printf "%s\n" "$pane" >> "$HOST_LAUNCH_LOG"' \
+    'tmux respawn-pane -k -t "$pane" -c "$repo" nvim ;;' \
+    'up|restart-dead)' \
+    'arguments=$*' \
+    'while [ "$#" -gt 0 ]; do case "$1" in --repo) repo=$2; shift 2 ;; --tmux-pane) pane=$2; shift 2 ;; --claim-id) shift 2 ;; *) shift ;; esac; done' \
+    'if [ -n "${DEVCONTAINER_START_DELAY:-}" ]; then sleep "$DEVCONTAINER_START_DELAY"; fi' \
+    'tmux set-option -p -t "$pane" @devcontainer_active nvim-devcontainer:fixture' \
+    'tmux respawn-pane -k -t "$pane" -c "$repo" "exec sleep 120"' \
+    'printf "%s\\n" "$command" "$arguments" > "${DEVCONTAINER_LOG:-$HOME/devcontainer.log}"' \
+    'if [ -n "${TMUX_REFRESH_EVENT_LOG:-}" ]; then printf "editor-devcontainer|%s\\n" "$command" >> "$TMUX_REFRESH_EVENT_LOG"; fi ;;' \
+    '*) exit 2 ;;' \
+    'esac' > "$TEST_HOME/.config/nvim/scripts/devcontainer-editor"
+  # The runtime helper represents the minimal headless Neovim adapter. It
+  # never starts a container: prepare-up returns an already-preflighted exact
+  # pair and preflight-record validates only the persisted dead record.
   # shellcheck disable=SC2016
   printf '%s\n' '#!/bin/sh' \
-    'printf "%s\\n" "$@" > "${DEVPOD_LOG:-$HOME/devpod.log}"' \
-    'if [ "${1:-}" = up ] && [ -n "${TMUX_REFRESH_EVENT_LOG:-}" ]; then' \
-    '  printf "editor-devpod|%s\\n" "$*" >> "$TMUX_REFRESH_EVENT_LOG"' \
-    'fi' \
-    '[ "${1:-}" = up ] && exec sleep 120' \
-    'exit "${DEVPOD_OPEN_STATUS:-3}"' \
-    > "$TEST_HOME/.config/nvim/scripts/devpod-nvim"
+    'command=${1:-}; repo=${2:-}' \
+    '[ "$#" -eq 2 ] || exit 2' \
+    '[ -z "${DEVCONTAINER_FLOW_LOG:-}" ] || printf "runtime|%s|%s\\n" "$command" "$repo" >> "$DEVCONTAINER_FLOW_LOG"' \
+    'case "${DEVCONTAINER_RUNTIME_MODE:-}" in' \
+    '  fail) printf "%s\\n" "certified runtime is unavailable" >&2; exit 7 ;;' \
+    '  missing) printf "\\t/managed/podman\\n"; exit 0 ;;' \
+    '  multiline) printf "/managed/devcontainer\\t/managed/podman\\nextra\\n"; exit 0 ;;' \
+    '  control) printf "/managed/devcontainer\\t/managed/podman\\rbad\\n"; exit 0 ;;' \
+    '  record-output) printf "%s\\n" unexpected; exit 0 ;;' \
+    'esac' \
+    'case "$command" in' \
+    '  prepare-up) printf "/managed/devcontainer\\t/managed/podman\\n" ;;' \
+    '  preflight-record) exit 0 ;;' \
+    '  *) exit 2 ;;' \
+    'esac' > "$TEST_HOME/.config/nvim/scripts/devcontainer-runtime"
   # shellcheck disable=SC2016
   printf '%s\n' '#!/bin/sh' \
     'if [ -n "${TMUX_REFRESH_EVENT_LOG:-}" ]; then' \
@@ -398,8 +432,8 @@ write_fakes() {
     "$TEST_BIN/refresh-agent" \
     "$TEST_BIN/lazygit" \
     "$PALETTE_BIN/tmux" \
-    "$TEST_HOME/.config/nvim/scripts/devpod-nvim" \
-    "$TEST_HOME/.config/nvim/scripts/nvim-review-open" \
+    "$TEST_HOME/.config/nvim/scripts/devcontainer-editor" \
+    "$TEST_HOME/.config/nvim/scripts/devcontainer-runtime" \
     "$TEST_HOME/.config/tuicr/tuicr-round"
 }
 
@@ -470,14 +504,14 @@ dev_refresh_behaviour() {
   refresh_lazygit_dir=$TMP/refresh-lazygit-config
   refresh_lazygit_log=$TMP/refresh-lazygit.log
   refresh_lazygit_editor_log=$TMP/refresh-lazygit-editor.log
-  refresh_devpod_log=$TMP/refresh-devpod.log
+  refresh_devcontainer_log=$TMP/refresh-devcontainer.log
   refresh_bin=$TMP/refresh-bin
   refresh_command_log=$TMP/refresh-commands.log
   mkdir -p "$refresh_work_dir" "$refresh_lazygit_dir" "$refresh_bin" || return
   : > "$refresh_lazygit_dir/config.yml"
   : > "$refresh_lazygit_log"
   : > "$refresh_lazygit_editor_log"
-  : > "$refresh_devpod_log"
+  : > "$refresh_devcontainer_log"
   : > "$refresh_command_log"
   # Log only the argv boundary, then forward to the exact real tmux binary.
   # This makes respawn order observable without adding refresh state to tmux.
@@ -500,7 +534,8 @@ dev_refresh_behaviour() {
   "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-environment -g LAZYGIT_LOG "$refresh_lazygit_log" || return
   "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-environment -g LAZYGIT_EDITOR_LOG \
     "$refresh_lazygit_editor_log" || return
-  "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-environment -g DEVPOD_LOG "$refresh_devpod_log" || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-environment -g DEVCONTAINER_LOG \
+    "$refresh_devcontainer_log" || return
 
   create_refresh_fixture() {
     fixture_session=$1
@@ -521,8 +556,9 @@ dev_refresh_behaviour() {
     fixture_editor=$(
       "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$fixture_session:editor" '#{pane_id}'
     ) || return
-    if [ "$fixture_mode" = devpod ]; then
-      "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-option -p -t "$fixture_editor" @devpod_active 1 || return
+    if [ "$fixture_mode" = devcontainer ]; then
+      "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-option -p -t "$fixture_editor" \
+        @devcontainer_active nvim-devcontainer:fixture || return
     fi
     printf '%s\n' "$fixture_editor"
   }
@@ -701,9 +737,9 @@ dev_refresh_behaviour() {
   exercise_refresh refresh-host host 'editor-host|restore=1|' || return
   expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p -t "$guard_pane" '#{pane_pid}')" \
     "$guard_pid" 'host refresh leaves second session process unchanged' || return
-  exercise_refresh refresh-devpod devpod 'editor-devpod|up --restore-session' || return
+  exercise_refresh refresh-devcontainer devcontainer 'editor-devcontainer|restart-dead' || return
   expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p -t "$guard_pane" '#{pane_pid}')" \
-    "$guard_pid" 'DevPod refresh leaves second session process unchanged' || return
+    "$guard_pid" 'Dev Container refresh leaves second session process unchanged' || return
 
   TMUX=$ref "$refresh_helper" check 'editor' >/dev/null 2>&1 && {
     printf 'refresh accepted a non-tmux pane token\n'; return 1;
@@ -778,9 +814,8 @@ lazygit_editor_behaviour() {
   write_fakes || return
 
   EDITOR_LOG=$TMP/lazygit-editor.log
-  DEVPOD_LOG=$TMP/lazygit-devpod.log
   PR_EDITOR_FOCUS_LOG=$TMP/lazygit-pr-editor-focus.log
-  export EDITOR_LOG DEVPOD_LOG PR_EDITOR_FOCUS_LOG
+  export EDITOR_LOG PR_EDITOR_FOCUS_LOG
 
   "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-session -d -s lazygit-route -n git \
     -c "$ROOT" 'sleep 120' || return
@@ -792,32 +827,38 @@ lazygit_editor_behaviour() {
   editor_window=$(
     "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t lazygit-route:editor '#{window_id}'
   ) || return
+  editor_pane=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$editor_window" '#{pane_id}'
+  ) || return
 
   PATH="$TEST_BIN:$PATH" TMUX=$ref TMUX_PANE=$git_pane \
     "$ROOT/scripts/lazygit-edit.sh" --line 12 -- "$ROOT/tmux.conf" || return
-  expect_equal "$(sed -n '1p' "$DEVPOD_LOG")" open-location \
-    'standalone LazyGit tries DevPod editor first' || return
   expect_equal "$(sed -n '1p' "$EDITOR_LOG")" --cwd 'LazyGit host RPC cwd flag' || return
   expect_equal "$(sed -n '2p' "$EDITOR_LOG")" "$ROOT" 'LazyGit host RPC root' || return
   expect_equal "$(sed -n '3p' "$EDITOR_LOG")" --file 'LazyGit host RPC file flag' || return
   expect_equal "$(sed -n '4p' "$EDITOR_LOG")" "$ROOT/tmux.conf" 'LazyGit host RPC file' || return
   expect_equal "$(sed -n '6p' "$EDITOR_LOG")" 12 'LazyGit host RPC line' || return
   expect_equal "$(sed -n '8p' "$EDITOR_LOG")" 1 'LazyGit host RPC column' || return
+  expect_equal "$(sed -n '9p' "$EDITOR_LOG")" --tmux-pane \
+    'LazyGit binds the canonical router to one editor pane' || return
+  expect_equal "$(sed -n '10p' "$EDITOR_LOG")" "$editor_pane" \
+    'LazyGit passes its resolved exact editor pane' || return
   expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p -t lazygit-route '#{window_id}')" \
     "$editor_window" 'successful host RPC focuses editor window' || return
 
   "$TMUX_REAL" -L "$ACTIVE_SOCKET" select-window -t lazygit-route:git || return
   : > "$EDITOR_LOG"
-  DEVPOD_OPEN_STATUS=0 PATH="$TEST_BIN:$PATH" TMUX=$ref TMUX_PANE=$git_pane \
+  DEVCONTAINER_OPEN_STATUS=0 PATH="$TEST_BIN:$PATH" TMUX=$ref TMUX_PANE=$git_pane \
     "$ROOT/scripts/lazygit-edit.sh" -- "$ROOT/README.md" || return
-  expect_equal "$(sed -n '1p' "$EDITOR_LOG")" '' 'active DevPod skips LazyGit host RPC' || return
+  expect_equal "$(sed -n '1p' "$EDITOR_LOG")" --cwd \
+    'active Dev Container uses the canonical editor router once' || return
   expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p -t lazygit-route '#{window_id}')" \
-    "$editor_window" 'successful DevPod RPC focuses editor window' || return
+    "$editor_window" 'successful Dev Container RPC focuses editor window' || return
 
   "$TMUX_REAL" -L "$ACTIVE_SOCKET" select-window -t lazygit-route:git || return
-  DEVPOD_OPEN_STATUS=2 PATH="$TEST_BIN:$PATH" TMUX=$ref TMUX_PANE=$git_pane \
+  DEVCONTAINER_OPEN_STATUS=2 PATH="$TEST_BIN:$PATH" TMUX=$ref TMUX_PANE=$git_pane \
     "$ROOT/scripts/lazygit-edit.sh" -- "$ROOT/README.md" >/dev/null 2>&1 && {
-      printf 'active DevPod bridge failure fell through or succeeded for LazyGit\n'
+      printf 'active Dev Container bridge failure fell through or succeeded for LazyGit\n'
       return 1
     }
   expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p -t lazygit-route '#{window_name}')" \
@@ -925,19 +966,141 @@ lazygit_editor_behaviour() {
   stop_active_server
 }
 
-devpod_editor_behaviour() {
+devcontainer_editor_behaviour() {
   start_plain_server || return
   ref=$(server_ref) || return
   write_fakes || return
-  DEVPOD_LOG=$TEST_HOME/devpod.log
-  export DEVPOD_LOG
-  "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-environment -g DEVPOD_LOG "$DEVPOD_LOG" || return
+  DEVCONTAINER_LOG=$TEST_HOME/devcontainer.log
+  DEVCONTAINER_FLOW_LOG=$TEST_HOME/devcontainer-flow.log
+  export DEVCONTAINER_LOG DEVCONTAINER_FLOW_LOG
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-environment -g DEVCONTAINER_LOG \
+    "$DEVCONTAINER_LOG" || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-environment -g DEVCONTAINER_FLOW_LOG \
+    "$DEVCONTAINER_FLOW_LOG" || return
+
+  # Runtime resolution and doctor must fail before the first claim is minted.
+  for runtime_mode in fail missing multiline control; do
+    : > "$DEVCONTAINER_FLOW_LOG"
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-session -d -s "editor-preflight-$runtime_mode" -n shell \
+      -c "$ROOT" 'sleep 120' || return
+    preflight_source=$(
+      "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p \
+        -t "editor-preflight-$runtime_mode:shell" '#{pane_id}'
+    ) || return
+    DEVCONTAINER_RUNTIME_MODE=$runtime_mode PATH="$TEST_BIN:$PATH" TMUX=$ref \
+      "$ROOT/scripts/devcontainer-editor.sh" up "$preflight_source" >/dev/null 2>&1 && {
+        printf 'invalid runtime helper output was accepted: %s\n' "$runtime_mode"
+        return 1
+      }
+    grep -F -x 'launcher|new-claim-id' "$DEVCONTAINER_FLOW_LOG" >/dev/null 2>&1 && {
+      printf 'runtime preflight failure allocated a claim: %s\n' "$runtime_mode"
+      return 1
+    }
+  done
+
+  # A detached lifecycle may spend the full build timeout preparing the
+  # container before it replaces the editor pane. The inert placeholder must
+  # stay alive for that whole interval; a finite sleep used to expire first.
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-environment -g DEVCONTAINER_START_DELAY 0.6 || return
+  rm -f "$DEVCONTAINER_LOG"
+  : > "$DEVCONTAINER_FLOW_LOG"
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-session -d -s editor-slow -n shell \
+    -c "$ROOT" 'sleep 120' || return
+  slow_source=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t editor-slow:shell '#{pane_id}'
+  ) || return
+  PATH="$TEST_BIN:$PATH" TMUX=$ref "$ROOT/scripts/devcontainer-editor.sh" up "$slow_source" || return
+  slow_pane=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t editor-slow:editor '#{pane_id}'
+  ) || return
+  slow_placeholder_pid=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$slow_pane" '#{pane_pid}'
+  ) || return
+  expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p \
+    -t "$slow_pane" '#{pane_current_command}')" tail \
+    'slow lifecycle uses an inert non-expiring placeholder' || return
+  expect_contains "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p \
+    -t "$slow_pane" '#{pane_start_command}')" 'tail -f /dev/null' \
+    'slow lifecycle placeholder has no finite deadline' || return
+  sleep 0.1
+  expect_equal "$($TMUX_REAL -L "$ACTIVE_SOCKET" display-message -p \
+    -t "$slow_pane" '#{pane_pid}')" "$slow_placeholder_pid" \
+    'slow lifecycle placeholder stays alive before handoff' || return
+  attempts=0
+  while [ ! -f "$DEVCONTAINER_LOG" ] && [ "$attempts" -lt 100 ]; do
+    sleep 0.02
+    attempts=$((attempts + 1))
+  done
+  [ -f "$DEVCONTAINER_LOG" ] || {
+    printf 'slow lifecycle never replaced its placeholder\n'
+    return 1
+  }
+  expect_equal "$(sed -n '1p' "$DEVCONTAINER_LOG")" up \
+    'slow lifecycle reaches the canonical launcher' || return
+  expect_contains "$(sed -n '2p' "$DEVCONTAINER_LOG")" \
+    '--cli-path /managed/devcontainer --docker-path /managed/podman' \
+    'new lifecycle receives the exact preflighted runtime pair' || return
+  expect_equal "$(sed -n '1p' "$DEVCONTAINER_FLOW_LOG")" "runtime|prepare-up|$ROOT" \
+    'runtime doctor completes before lifecycle claim allocation' || return
+  expect_equal "$(sed -n '2p' "$DEVCONTAINER_FLOW_LOG")" 'launcher|new-claim-id' \
+    'new lifecycle allocates its claim only after runtime doctor' || return
+  slow_running_pid=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$slow_pane" '#{pane_pid}'
+  ) || return
+  [ "$slow_running_pid" != "$slow_placeholder_pid" ] || {
+    printf 'slow lifecycle did not replace its exact placeholder pane\n'
+    return 1
+  }
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-environment -gu DEVCONTAINER_START_DELAY || return
+  rm -f "$DEVCONTAINER_LOG"
+
+  # Concurrent callers in one exact session must serialize discovery and
+  # creation, then all reuse the single resulting editor window.
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-session -d -s editor-concurrent -n shell \
+    -c "$ROOT" 'sleep 120' || return
+  concurrent_source=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t editor-concurrent:shell '#{pane_id}'
+  ) || return
+  HOST_LAUNCH_LOG=$TMP/host-launch.log
+  export HOST_LAUNCH_LOG
+  : > "$HOST_LAUNCH_LOG"
+  concurrent_pids=''
+  concurrent_index=0
+  while [ "$concurrent_index" -lt 8 ]; do
+    concurrent_index=$((concurrent_index + 1))
+    PATH="$TEST_BIN:$PATH" TMUX=$ref "$ROOT/scripts/devcontainer-editor.sh" \
+      host "$concurrent_source" >"$TMP/editor-concurrent-$concurrent_index.log" 2>&1 &
+    concurrent_pids="$concurrent_pids $!"
+  done
+  for concurrent_pid in $concurrent_pids; do
+    wait "$concurrent_pid" || {
+      printf 'concurrent editor caller failed\n'
+      return 1
+    }
+  done
+  concurrent_windows=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" list-windows -t editor-concurrent \
+      -F '#{window_name}' | awk '$0 == "editor" { count++ } END { print count + 0 }'
+  ) || return
+  expect_equal "$concurrent_windows" 1 \
+    'concurrent callers create exactly one editor window' || return
+  expect_equal "$(awk 'END { print NR + 0 }' "$HOST_LAUNCH_LOG")" 1 \
+    'concurrent callers perform exactly one host editor handoff' || return
+  concurrent_session=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$concurrent_source" '#{session_id}'
+  ) || return
+  concurrent_lock=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" show-option -qv -t "$concurrent_session" \
+      @devcontainer_editor_window_lock 2>/dev/null || true
+  )
+  expect_equal "$concurrent_lock" '' 'editor window lock is released after concurrent callers' || return
+  unset HOST_LAUNCH_LOG
 
   "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-session -d -s editor-create -n shell -c "$ROOT" 'sleep 120' || return
   source_pane=$(
     "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t editor-create:shell '#{pane_id}'
   ) || return
-  PATH="$TEST_BIN:$PATH" TMUX=$ref "$ROOT/scripts/devpod-editor.sh" host "$source_pane" || return
+  PATH="$TEST_BIN:$PATH" TMUX=$ref "$ROOT/scripts/devcontainer-editor.sh" host "$source_pane" || return
   editor_windows=$(
     "$TMUX_REAL" -L "$ACTIVE_SOCKET" list-windows -t editor-create -F '#{window_id}	#{window_name}' |
       awk -F '	' '$2 == "editor" { print $1 }'
@@ -970,16 +1133,114 @@ devpod_editor_behaviour() {
     awk '$0 == "editor" { count++ } END { print count + 0 }')" 1 \
     'editor window survives application exit' || return
 
-  PATH="$TEST_BIN:$PATH" TMUX=$ref "$ROOT/scripts/devpod-editor.sh" host "$source_pane" || return
+  PATH="$TEST_BIN:$PATH" TMUX=$ref "$ROOT/scripts/devcontainer-editor.sh" host "$source_pane" || return
   expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$editor_window" '#{pane_id}')" \
     "$editor_pane" 'existing editor pane is reused' || return
-  PATH="$TEST_BIN:$PATH" TMUX=$ref "$ROOT/scripts/devpod-editor.sh" up "$source_pane" || return
+  PATH="$TEST_BIN:$PATH" TMUX=$ref "$ROOT/scripts/devcontainer-editor.sh" up "$source_pane" || return
   attempts=0
-  while [ ! -f "$DEVPOD_LOG" ] && [ "$attempts" -lt 100 ]; do
+  while [ ! -f "$DEVCONTAINER_LOG" ] && [ "$attempts" -lt 100 ]; do
     sleep 0.02
     attempts=$((attempts + 1))
   done
-  expect_equal "$(sed -n '1p' "$DEVPOD_LOG")" up 'DevPod launcher starts in the editor pane' || return
+  expect_equal "$(sed -n '1p' "$DEVCONTAINER_LOG")" up \
+    'Dev Container launcher starts for the exact editor pane' || return
+  active_editor_pid=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$editor_pane" '#{pane_pid}'
+  ) || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" select-window -t editor-create:shell || return
+  : > "$DEVCONTAINER_FLOW_LOG"
+  PATH="$TEST_BIN:$PATH" TMUX=$ref "$ROOT/scripts/devcontainer-editor.sh" up "$source_pane" || return
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p \
+    -t "$editor_pane" '#{pane_pid}')" "$active_editor_pid" \
+    'active Dev Container editor is focused without restart' || return
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p \
+    -t editor-create '#{window_name}')" editor \
+    'active Dev Container editor window is selected' || return
+  expect_equal "$(sed -n '1p' "$DEVCONTAINER_FLOW_LOG")" 'launcher|check-active' \
+    'active editor is verified without resolving a new runtime' || return
+  if grep -F 'runtime|' "$DEVCONTAINER_FLOW_LOG" >/dev/null 2>&1; then
+    printf 'active Dev Container editor resolved an unnecessary runtime\n'
+    return 1
+  fi
+
+  # A marked dead pane must re-enter through restart-dead. A generic
+  # respawn-pane would start container Neovim without its coordinator or
+  # authenticated request spool.
+  : > "$DEVCONTAINER_LOG"
+  : > "$DEVCONTAINER_FLOW_LOG"
+  kill -TERM "$active_editor_pid" || return
+  attempts=0
+  while [ "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$editor_pane" \
+    '#{pane_dead}' 2>/dev/null || true)" != 1 ] && [ "$attempts" -lt 100 ]; do
+    sleep 0.02
+    attempts=$((attempts + 1))
+  done
+  DEVCONTAINER_RUNTIME_MODE=record-output PATH="$TEST_BIN:$PATH" TMUX=$ref \
+    "$ROOT/scripts/revive-pane.sh" "$editor_pane" >/dev/null 2>&1 && {
+      printf 'dead record preflight accepted unexpected output\n'
+      return 1
+    }
+  grep -F -x 'launcher|new-claim-id' "$DEVCONTAINER_FLOW_LOG" >/dev/null 2>&1 && {
+    printf 'invalid dead record preflight allocated a claim\n'
+    return 1
+  }
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p \
+    -t "$editor_pane" '#{pane_dead}')" 1 \
+    'failed dead record preflight leaves the exact pane untouched' || return
+  : > "$DEVCONTAINER_FLOW_LOG"
+  PATH="$TEST_BIN:$PATH" TMUX=$ref "$ROOT/scripts/revive-pane.sh" "$editor_pane" || return
+  attempts=0
+  while [ ! -s "$DEVCONTAINER_LOG" ] && [ "$attempts" -lt 100 ]; do
+    sleep 0.02
+    attempts=$((attempts + 1))
+  done
+  expect_equal "$(sed -n '1p' "$DEVCONTAINER_LOG")" restart-dead \
+    'marked dead pane revives through the lifecycle coordinator' || return
+  preflight_line=$(awk -F '|' '$1 == "runtime" && $2 == "preflight-record" { print NR; exit }' \
+    "$DEVCONTAINER_FLOW_LOG")
+  claim_line=$(awk -F '|' '$1 == "launcher" && $2 == "new-claim-id" { print NR; exit }' \
+    "$DEVCONTAINER_FLOW_LOG")
+  [ -n "$preflight_line" ] && [ -n "$claim_line" ] || {
+    printf 'dead restart omitted record preflight or claim allocation\n'
+    return 1
+  }
+  [ "$preflight_line" -lt "$claim_line" ] || {
+    printf 'dead restart allocated a claim before record preflight\n'
+    return 1
+  }
+  case "$(sed -n '2p' "$DEVCONTAINER_LOG")" in
+    *--cli-path*)
+      printf 'dead restart accepted a runtime override instead of reusing record v4\n'
+      return 1
+      ;;
+  esac
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p \
+    -t "$editor_window" '#{pane_id}')" "$editor_pane" \
+    'coordinated revive preserves the exact editor pane' || return
+
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-session -d -s native-revive -n shell \
+    -c "$ROOT" 'exec sleep 120' || return
+  native_pane=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t native-revive:shell '#{pane_id}'
+  ) || return
+  "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-option -p -t "$native_pane" remain-on-exit on || return
+  native_pid=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$native_pane" '#{pane_pid}'
+  ) || return
+  kill -TERM "$native_pid" || return
+  attempts=0
+  while [ "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$native_pane" \
+    '#{pane_dead}' 2>/dev/null || true)" != 1 ] && [ "$attempts" -lt 100 ]; do
+    sleep 0.02
+    attempts=$((attempts + 1))
+  done
+  TMUX=$ref "$ROOT/scripts/revive-pane.sh" "$native_pane" || return
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p \
+    -t native-revive:shell '#{pane_id}')" "$native_pane" \
+    'unmarked native revive preserves the pane id' || return
+  expect_equal "$("$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p \
+    -t "$native_pane" '#{pane_dead}')" 0 \
+    'unmarked dead pane keeps native respawn behaviour' || return
 
   "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-session -d -s editor-ambiguous -n shell -c "$ROOT" 'sleep 120' || return
   "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-window -d -t editor-ambiguous: -n editor -c "$ROOT" 'sleep 120' || return
@@ -987,18 +1248,26 @@ devpod_editor_behaviour() {
   ambiguous_source=$(
     "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t editor-ambiguous:shell '#{pane_id}'
   ) || return
-  PATH="$TEST_BIN:$PATH" TMUX=$ref "$ROOT/scripts/devpod-editor.sh" host "$ambiguous_source" \
+  PATH="$TEST_BIN:$PATH" TMUX=$ref "$ROOT/scripts/devcontainer-editor.sh" host "$ambiguous_source" \
     >/dev/null 2>&1 && {
       printf 'ambiguous editor windows were accepted\n'
       return 1
     }
+  ambiguous_session=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t "$ambiguous_source" '#{session_id}'
+  ) || return
+  ambiguous_lock=$(
+    "$TMUX_REAL" -L "$ACTIVE_SOCKET" show-option -qv -t "$ambiguous_session" \
+      @devcontainer_editor_window_lock 2>/dev/null || true
+  )
+  expect_equal "$ambiguous_lock" '' 'editor window error path releases its session lock' || return
 
   "$TMUX_REAL" -L "$ACTIVE_SOCKET" new-session -d -s ssh_editor_guard -n shell -c "$ROOT" 'sleep 120' || return
   "$TMUX_REAL" -L "$ACTIVE_SOCKET" set-option -t ssh_editor_guard @ssh_host host.example || return
   ssh_source=$(
     "$TMUX_REAL" -L "$ACTIVE_SOCKET" display-message -p -t ssh_editor_guard:shell '#{pane_id}'
   ) || return
-  PATH="$TEST_BIN:$PATH" TMUX=$ref "$ROOT/scripts/devpod-editor.sh" host "$ssh_source" \
+  PATH="$TEST_BIN:$PATH" TMUX=$ref "$ROOT/scripts/devcontainer-editor.sh" host "$ssh_source" \
     >/dev/null 2>&1 && {
       printf 'SSH session accepted a local editor window\n'
       return 1
@@ -1167,15 +1436,13 @@ pane_helpers_and_status() {
   fixture=$ROOT/tmux.conf
   OPEN_LOG=$TMP/open.log
   EDITOR_LOG=$TMP/editor.log
-  DEVPOD_LOG=$TMP/devpod.log
   REVIEW_LOG=$TMP/review.log
-  export OPEN_LOG EDITOR_LOG DEVPOD_LOG REVIEW_LOG
+  export OPEN_LOG EDITOR_LOG REVIEW_LOG
   printf '%s\n' 'https://example.invalid/path' | PATH="$TEST_BIN:$PATH" TMUX=$ref \
     "$ROOT/scripts/open-selection.sh" --system "$pane" || return
   expect_equal "$(sed -n '1p' "$OPEN_LOG")" 'https://example.invalid/path' 'system opener argv' || return
   printf '%s\n' "$fixture:12:7" | PATH="$TEST_BIN:$PATH" TMUX=$ref \
     "$ROOT/scripts/open-selection.sh" --editor "$pane" || return
-  expect_equal "$(sed -n '1p' "$DEVPOD_LOG")" 'open-location' 'DevPod RPC command' || return
   expect_equal "$(sed -n '1p' "$EDITOR_LOG")" '--cwd' 'RPC cwd flag' || return
   expect_equal "$(sed -n '2p' "$EDITOR_LOG")" "$ROOT" 'RPC cwd argv' || return
   expect_equal "$(sed -n '3p' "$EDITOR_LOG")" '--file' 'RPC file flag' || return
@@ -1184,12 +1451,13 @@ pane_helpers_and_status() {
   expect_equal "$(sed -n '8p' "$EDITOR_LOG")" '7' 'RPC column argv' || return
 
   : > "$EDITOR_LOG"
-  printf '%s\n' "$fixture:12:7" | DEVPOD_OPEN_STATUS=0 PATH="$TEST_BIN:$PATH" TMUX=$ref \
+  printf '%s\n' "$fixture:12:7" | DEVCONTAINER_OPEN_STATUS=0 PATH="$TEST_BIN:$PATH" TMUX=$ref \
     "$ROOT/scripts/open-selection.sh" --editor "$pane" || return
-  expect_equal "$(sed -n '1p' "$EDITOR_LOG")" '' 'active DevPod skips host RPC' || return
-  printf '%s\n' "$fixture:12:7" | DEVPOD_OPEN_STATUS=2 PATH="$TEST_BIN:$PATH" TMUX=$ref \
+  expect_equal "$(sed -n '1p' "$EDITOR_LOG")" '--cwd' \
+    'active Dev Container uses one canonical editor route' || return
+  printf '%s\n' "$fixture:12:7" | DEVCONTAINER_OPEN_STATUS=2 PATH="$TEST_BIN:$PATH" TMUX=$ref \
     "$ROOT/scripts/open-selection.sh" --editor "$pane" >/dev/null 2>&1 && {
-      printf 'active DevPod bridge failure fell through or succeeded\n'; return 1;
+      printf 'active Dev Container bridge failure fell through or succeeded\n'; return 1;
     }
 
   PATH="$TEST_BIN:$PATH" TMUX=$ref TMUX_PANE=$pane "$ROOT/scripts/tuicr-review.sh" || return
@@ -1371,7 +1639,15 @@ plugin_and_binding_contract() {
   expect_contains "$(binding_for copy-mode-vi C-o)" \
     'open-selection.sh --editor' 'editor selection binding' || return
   expect_contains "$(binding_for prefix R)" \
-    'lazygit-window.sh' 'dead git pane migrates to standalone LazyGit wrapper' || return
+    'revive-pane.sh' 'prefix R uses the exact lifecycle-aware revive dispatcher' || return
+  grep -F 'lazygit-window.sh' "$ROOT/scripts/revive-pane.sh" >/dev/null || {
+    printf 'lifecycle-aware revive lost the standalone LazyGit migration\n'
+    return 1
+  }
+  grep -F 'revive-pane.sh' "$ROOT/scripts/palette.sh" >/dev/null || {
+    printf 'palette revive bypasses the lifecycle-aware dispatcher\n'
+    return 1
+  }
   opener_binding=$(binding_for copy-mode-vi o)
   case "$opener_binding" in
     *'open-selection.sh --system'*|*'other-end'*) ;;
@@ -1387,7 +1663,7 @@ plugin_and_binding_contract() {
 run_check 'real source-file parse and core invariants' parse_and_invariants
 run_check 'detached smoke on a distinct socket' detached_smoke
 run_check 'exact SSH metadata, validation and rename cleanup' ssh_behaviour
-run_check 'DevPod editor window creation, reuse and guards' devpod_editor_behaviour
+run_check 'Dev Container editor window creation, reuse and guards' devcontainer_editor_behaviour
 run_check 'dev layout palette window selection' dev_window_palette_behaviour
 run_check 'dev session refresh lifecycle and failure guards' dev_refresh_behaviour
 run_check 'standalone LazyGit editor routing and config isolation' lazygit_editor_behaviour

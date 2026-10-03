@@ -92,9 +92,9 @@ editor_count=$(printf '%s\n' "$editor_panes" | awk 'NF { count++ } END { print c
 }
 editor_pane=$(printf '%s\n' "$editor_panes" | sed -n '1p')
 
-rpc_helper=${HOME:-}/.config/nvim/scripts/nvim-review-open
-[ -x "$rpc_helper" ] || {
-  say "Neovim RPC helper is not executable: $rpc_helper"
+editor_helper=${HOME:-}/.config/nvim/scripts/devcontainer-editor
+[ -x "$editor_helper" ] || {
+  say "Neovim editor router is not executable: $editor_helper"
   exit 1
 }
 
@@ -106,7 +106,8 @@ scratch=$(mktemp -d "${TMPDIR:-/tmp}/lazygit-pr-editor.XXXXXX") || {
 ready=$scratch/ready
 error=$scratch/error
 
-"$rpc_helper" --wait-editor --signal-ready --tmux-pane "$editor_pane" "$target" >"$ready" 2>"$error" &
+"$editor_helper" editor-open --wait-editor --signal-ready --tmux-pane "$editor_pane" "$target" \
+  >"$ready" 2>"$error" &
 child=$!
 while :; do
   if [ -s "$ready" ]; then
